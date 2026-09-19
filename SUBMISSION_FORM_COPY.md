@@ -30,7 +30,7 @@ React 19 and TypeScript power the dashboard. The client contains a deterministic
 
 ## AI disclosure
 
-AI coding assistants, including Manus AI, were used for code generation, refactoring, test writing, debugging, and documentation. The HTTP 404 team selected the challenge, product direction, model assumptions, interaction design, and validation criteria. Open-source libraries and the managed Manus starter template are disclosed in the repository README.
+AI coding assistants were used for code generation, refactoring, test writing, debugging, and documentation. The HTTP 404 team selected the challenge, product direction, model assumptions, interaction design, and validation criteria. Open-source libraries and the managed starter template are disclosed in the repository README.
 
 ## Demo link
 

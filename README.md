@@ -128,7 +128,7 @@ See [CREDITS.md](./CREDITS.md) for the project credits, AI disclosure, platform 
 
 ## AI and starter-template disclosure
 
-AI coding assistants, including Manus AI, were used during the hackathon for code generation, refactoring, test writing, debugging, and documentation. The team selected the challenge, defined the product direction, chose the weighted facility-location approach and assumptions, reviewed the generated implementation, and validated the behavior with tests and live scenarios. The core modeling logic and integration were not presented as a fake or hardcoded AI component.
+AI coding assistants were used during the hackathon for code generation, refactoring, test writing, debugging, and documentation. The team selected the challenge, defined the product direction, chose the weighted facility-location approach and assumptions, reviewed the generated implementation, and validated the behavior with tests and live scenarios. The core modeling logic and integration were not presented as a fake or hardcoded AI component.
 
 The project also uses open-source libraries and the managed Manus WebDev starter template for React, Vite, Express, tRPC, authentication, database wiring, and UI primitives. The template and libraries were extended substantially for the warehouse-optimization challenge; their use is disclosed here in accordance with the hackathon rules.
 

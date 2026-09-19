@@ -12,7 +12,7 @@ Thanks to the **Hack-a-Matics organizers and mentors** for the warehouse-locatio
 
 ## AI assistance
 
-**Manus AI** and AI coding assistants were used during the hackathon for code generation, refactoring, test writing, debugging, documentation, and release preparation. AI assistance supported implementation; the HTTP 404 team made the product decisions, selected the weighted facility-location approach, defined the objective and guardrails, reviewed generated changes, and validated the working result. No fake or hardcoded AI component is claimed as the optimization engine.
+AI coding assistants were used during the hackathon for code generation, refactoring, test writing, debugging, documentation, and release preparation. AI assistance supported implementation; the HTTP 404 team made the product decisions, selected the weighted facility-location approach, defined the objective and guardrails, reviewed generated changes, and validated the working result. No fake or hardcoded AI component is claimed as the optimization engine.
 
 ## Platform and starter infrastructure
 
