@@ -187,3 +187,21 @@ select, .inline-controls input, .reveal-field input { width: 100%; margin-top: 7
 
 .empty-library button { margin-top: 5px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); background: var(--panel); font-size: 9px; }
 .empty-library button:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Header collision fix: keep live state and timestamp as independent, non-wrapping units. */
+.topbar { min-width: 0; }
+.topbar > .crumb { min-width: 0; overflow: hidden; white-space: nowrap; }
+.topbar-tools { min-width: 0; flex: 0 1 auto; justify-content: flex-end; }
+.topbar .status { display: inline-flex; flex: 0 0 auto; min-width: max-content; align-items: center; white-space: nowrap; }
+.topbar .status-label { width: auto; height: auto; margin: 0; background: transparent; color: var(--muted); }
+.topbar .status-separator { width: 1px; height: 14px; margin: 0 4px; background: var(--line); }
+.topbar .status time { display: inline-block; min-width: 54px; text-align: right; white-space: nowrap; }
+@media (max-width: 920px) {
+  .topbar .command-button { min-width: 29px; width: 29px; padding: 0; justify-content: center; }
+  .topbar .command-button span, .topbar .command-button kbd { display: none; }
+}
+@media (max-width: 760px) {
+  .topbar-tools { flex: 0 0 auto; }
+  .topbar .status-label, .topbar .status-separator { display: none; }
+  .topbar .status time { min-width: 48px; font-size: 8px; }
+}
