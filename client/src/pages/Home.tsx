@@ -1,23 +1,41 @@
-import { ChangeEvent, PointerEvent as ReactPointerEvent, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { startLogin } from "@/const";
+import { useTheme } from "@/contexts/ThemeContext";
+import { trpc } from "@/lib/trpc";
+import { ChangeEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   Activity,
   BarChart3,
   Check,
+  CheckCircle2,
   ChevronRight,
   CircleGauge,
+  Cloud,
+  Command,
   Download,
   GripVertical,
   Info,
+  Layers3,
+  LogIn,
+  LogOut,
   MapPin,
+  Moon,
   MousePointer2,
   Navigation,
+  PanelTop,
   Play,
   Plus,
   Printer,
+  Search,
+  Settings2,
   Sparkles,
+  Sun,
   Table2,
   TriangleAlert,
+  Trash2,
   Upload,
+  UserRound,
   Warehouse,
   X,
   Zap,
@@ -96,6 +114,10 @@ type NetworkResult = {
   uncovered: Assignment[];
   radiusViolations: number;
 };
+
+type ThemeAccent = "orange" | "teal" | "violet";
+type SavedScenarioRow = { id: number; name: string; dataset: string; payload: string; updatedAt: Date | string };
+type SavedSnapshot = { version: 1; nodes: DemandNode[]; params: Params; manualHubs: Point[] | null };
 
 const BENGALURU: DemandNode[] = [
   { id: "indiranagar", name: "Indiranagar", lat: 12.9719, lon: 77.6412, orders: 420 },
@@ -295,10 +317,10 @@ function downloadCsv(filename: string, headers: string[], rows: Array<Array<stri
 }
 
 function MapPlot({
-  nodes, hubs, assignments, radius, locationName, dragHubId, onHubDrag, onHubDragEnd, isRecalculating,
+  nodes, hubs, assignments, radius, locationName, dragHubId, onHubDrag, onHubDragEnd, isRecalculating, showRoutes, showZones,
 }: {
   nodes: ScenarioNode[]; hubs: Hub[]; assignments: Assignment[]; radius: number | null; locationName: string;
-  dragHubId: number | null; onHubDrag: (hubId: number, point: Point) => void; onHubDragEnd: () => void; isRecalculating: boolean;
+  dragHubId: number | null; onHubDrag: (hubId: number, point: Point) => void; onHubDragEnd: () => void; isRecalculating: boolean; showRoutes: boolean; showZones: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const lats = nodes.map((node) => node.lat); const lons = nodes.map((node) => node.lon);
@@ -319,14 +341,14 @@ function MapPlot({
     <div className="drag-hint"><MousePointer2 size={13} /><span>Drag a hub to test sensitivity</span></div>
     {isRecalculating && <div className="recalculating"><Activity size={13} /><span>Recalculating…</span></div>}
     <svg ref={svgRef} className="network-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Demand nodes and proposed warehouse hubs" onPointerMove={(event) => { if (dragHubId !== null) onHubDrag(dragHubId, toPoint(event)); }} onPointerUp={onHubDragEnd} onPointerCancel={onHubDragEnd}>
-      {hubs.map((hub) => {
+      {showZones && hubs.map((hub) => {
         const { x, y } = locate(hub); const maxDistance = hubRadius(hub.hubId);
         const rx = Math.min(26, (maxDistance / (maxLon - minLon) / (EARTH_KM_PER_LAT * Math.cos(hub.lat * Math.PI / 180))) * 86 * 1.14);
         const ry = Math.min(26, (maxDistance / (maxLat - minLat) / EARTH_KM_PER_LAT) * 84 * 1.14);
         return <ellipse key={`zone-${hub.hubId}`} cx={x} cy={y} rx={rx} ry={ry} className="catchment-zone" style={{ fill: PALETTE[hub.hubId % PALETTE.length] }} />;
       })}
       {radius && hubs.map((hub) => { const { x, y } = locate(hub); const radiusPercent = (radius / (maxLat - minLat) / EARTH_KM_PER_LAT) * 84; return <circle key={`ring-${hub.hubId}`} cx={x} cy={y} r={radiusPercent} className="radius-ring" style={{ stroke: PALETTE[hub.hubId % PALETTE.length] }} />; })}
-      {assignments.map((assignment) => { const node = locate(assignment); const hub = locate(hubs[assignment.hubId]); return <line key={`route-${assignment.id}`} x1={node.x} y1={node.y} x2={hub.x} y2={hub.y} className={assignment.withinRadius ? "route-line" : "route-line out-of-range"} style={{ stroke: PALETTE[assignment.hubId % PALETTE.length] }} />; })}
+      {showRoutes && assignments.map((assignment) => { const node = locate(assignment); const hub = locate(hubs[assignment.hubId]); return <line key={`route-${assignment.id}`} x1={node.x} y1={node.y} x2={hub.x} y2={hub.y} className={assignment.withinRadius ? "route-line" : "route-line out-of-range"} style={{ stroke: PALETTE[assignment.hubId % PALETTE.length] }} />; })}
       {nodes.map((node) => { const { x, y } = locate(node); const assignment = assignments.find((item) => item.id === node.id); const nodeRadius = 1.2 + (node.adjustedOrders / maxOrders) * 2.25; return <g key={node.id}><circle cx={x} cy={y} r={nodeRadius + .75} className={assignment?.withinRadius ? "node-halo" : "node-halo violation-halo"} /><circle cx={x} cy={y} r={nodeRadius} className={assignment?.withinRadius ? "demand-node" : "demand-node violation-node"} style={{ fill: assignment?.withinRadius ? PALETTE[assignment.hubId % PALETTE.length] : "#c9575f" }} /><title>{node.name}: {node.adjustedOrders} orders/day · H{(assignment?.hubId || 0) + 1}</title></g>; })}
       {hubs.map((hub) => { const { x, y } = locate(hub); return <g key={`hub-${hub.hubId}`} className={`draggable-hub ${dragHubId === hub.hubId ? "dragging" : ""}`} onPointerDown={(event) => { event.stopPropagation(); try { svgRef.current?.setPointerCapture(event.pointerId); } catch { /* synthetic pointer events do not have captureable hardware pointers */ } onHubDrag(hub.hubId, toPoint(event)); }}><rect x={x - 2.75} y={y - 2.75} width="5.5" height="5.5" rx=".85" className="hub-marker" style={{ fill: PALETTE[hub.hubId % PALETTE.length] }} /><GripVertical x={x - 1.25} y={y - 1.1} width="2.5" height="2.5" className="hub-grip" /><text x={x} y={y + .7} className="hub-text">H{hub.hubId + 1}</text><title>Drag H{hub.hubId + 1} to reposition this warehouse</title></g>; })}
     </svg>
@@ -336,6 +358,10 @@ function MapPlot({
 }
 
 export default function Home() {
+  const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const utils = trpc.useUtils();
+
   const [nodes, setNodes] = useState<DemandNode[]>(cloneNodes(BENGALURU));
   const [params, setParams] = useState<Params>(DEFAULT_PARAMS);
   const [dataset, setDataset] = useState<DatasetKey>("Bengaluru");
@@ -344,13 +370,41 @@ export default function Home() {
   const [runStamp, setRunStamp] = useState(() => new Date());
   const [dragHubId, setDragHubId] = useState<number | null>(null);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [showRoutes, setShowRoutes] = useState(true);
+  const [showZones, setShowZones] = useState(true);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [scenarioName, setScenarioName] = useState("");
+  const [accent, setAccent] = useState<ThemeAccent>(() => (localStorage.getItem("gridpoint-accent") as ThemeAccent) || "orange");
+  const [isTourOpen, setIsTourOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const recalculationTimer = useRef<number | null>(null);
+  const scenarioQuery = trpc.scenario.list.useQuery(undefined, { enabled: isAuthenticated, retry: false, refetchOnWindowFocus: false });
+  const saveScenarioMutation = trpc.scenario.save.useMutation({ onSuccess: () => { utils.scenario.list.invalidate(); toast.success("Scenario saved to your cloud workspace"); setScenarioName(""); } });
+  const deleteScenarioMutation = trpc.scenario.delete.useMutation({ onSuccess: () => { utils.scenario.list.invalidate(); toast.success("Scenario removed"); } });
   const result = useMemo(() => solveNetwork(nodes, params, manualHubs), [nodes, params, manualHubs]);
   const curve = useMemo(() => buildCurve(nodes, params), [nodes, params]);
   const scenarioComparison = useMemo(() => [0, 15, 30].map((surge) => ({ surge, ...solveNetwork(nodes, { ...params, surge }, manualHubs) })), [nodes, params, manualHubs]);
   const optimalCurve = curve.reduce((best, point) => point.total < best.total ? point : best, curve[0]);
   const activeRadius = params.useRadius ? params.radius : null;
+  const highestCostNode = useMemo(() => [...result.assignments].sort((a, b) => b.cost - a.cost)[0], [result.assignments]);
+  const readinessScore = Math.max(0, Math.min(100, Math.round(result.coverage - (result.hubs.some((hub) => hub.overCapacity) ? 15 : 0) + Math.min(10, Math.max(0, result.savingsPercent / 8)))));
+  const savedRows = (scenarioQuery.data ?? []) as SavedScenarioRow[];
+
+  useEffect(() => {
+    document.documentElement.dataset.accent = accent;
+    localStorage.setItem("gridpoint-accent", accent);
+  }, [accent]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setCommandOpen(true); }
+      if (event.key === "Escape") { setCommandOpen(false); setWorkspaceOpen(false); setSettingsOpen(false); setIsTourOpen(false); }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
 
   const updateParams = (patch: Partial<Params>) => setParams((current) => ({ ...current, ...patch }));
   const updateNode = (id: string, patch: Partial<DemandNode>) => { setDataset("Custom"); setManualHubs(null); setNodes((current) => current.map((node) => node.id === id ? { ...node, ...patch } : node)); };
@@ -397,9 +451,26 @@ export default function Home() {
     report.document.close(); window.setTimeout(() => report.print(), 250);
   };
 
-  return <div className="site-shell">
+  const currentSnapshot = (): SavedSnapshot => ({ version: 1, nodes: cloneNodes(nodes), params: { ...params }, manualHubs: manualHubs?.map((hub) => ({ ...hub })) ?? null });
+  const saveScenario = () => {
+    if (!isAuthenticated) { toast.info("Sign in to save this network across devices"); startLogin(); return; }
+    const name = scenarioName.trim() || `${dataset} · ${params.surge ? `+${params.surge}% demand` : "Base network"}`;
+    saveScenarioMutation.mutate({ name, dataset, snapshot: currentSnapshot() });
+  };
+  const restoreScenario = (row: SavedScenarioRow) => {
+    try {
+      const snapshot = JSON.parse(row.payload) as SavedSnapshot;
+      if (snapshot.version !== 1 || !Array.isArray(snapshot.nodes) || !snapshot.params) throw new Error("Unsupported scenario");
+      setNodes(snapshot.nodes); setParams(snapshot.params); setManualHubs(snapshot.manualHubs); setDataset(["Bengaluru", "Mumbai", "Delhi"].includes(row.dataset) ? row.dataset as DatasetKey : "Custom"); setRunStamp(new Date()); setWorkspaceOpen(false);
+      toast.success(`Loaded “${row.name}”`);
+    } catch { toast.error("This saved scenario cannot be restored"); }
+  };
+  const handleLogout = async () => { await logout(); toast.success("Signed out of GridPoint"); };
+  const openCommand = (action: () => void) => { action(); setCommandOpen(false); };
+
+  return <div className="site-shell" data-accent={accent}>
     <aside className="control-rail">
-      <div className="rail-top"><a href="#top" className="brand" aria-label="GridPoint home"><span className="brand-sigil">⌁</span><span><b>GRIDPOINT</b><small>NETWORK DESIGN LAB</small></span></a><span className="version-chip">LIVE</span></div>
+      <div className="rail-top"><a href="#top" className="brand" aria-label="GridPoint home"><span className="brand-sigil">⌁</span><span><b>GRIDPOINT</b><small>NETWORK DESIGN LAB</small></span></a><div className="rail-actions"><button className="icon-button" aria-label="Open command search" onClick={() => setCommandOpen(true)}><Search size={14} /></button><button className="avatar-button" aria-label="Open workspace" onClick={() => setWorkspaceOpen(true)}>{isAuthenticated ? (user?.name?.slice(0, 1).toUpperCase() || "U") : <UserRound size={14} />}</button></div></div>
       <div className="rail-intro"><span className="eyebrow">MODEL CONTROLS</span><p>Build an explainable network plan from raw demand data.</p></div>
       <section className="rail-section">
         <div className="section-title"><span>01 / demand map</span><h2>Demand nodes</h2></div>
@@ -436,11 +507,12 @@ export default function Home() {
         <div className="scenario-switcher">{[0, 15, 30].map((value) => <button key={value} className={params.surge === value ? "active" : ""} onClick={() => updateParams({ surge: value })}>{value === 0 ? "Base" : `+${value}%`}</button>)}</div>
         <p className="helper-copy">Apply a peak-day profile without changing the geography.</p>
       </section>
-      <section className="rail-section export-section"><div className="section-title"><span>06 / handoff</span><h2>Exports</h2></div><button className="export-button" onClick={exportAssignments}><Download size={13} /> Download Assignments CSV</button><button className="export-button" onClick={exportCostSummary}><Download size={13} /> Download Cost Summary CSV</button><button className="export-button report" onClick={generateReport}><Printer size={13} /> Generate Decision Report</button></section>
-      <div className="run-area"><button className="run-button" onClick={runModel}><span><Play size={14} fill="currentColor" /> Run optimization</span><ChevronRight size={18} /></button><p>Pure client-side model · no API required</p></div>
+      <section className="rail-section workspace-rail"><div className="section-title"><span>06 / workspace</span><h2>Cloud decisions</h2></div><p className="helper-copy">{isAuthenticated ? `Signed in as ${user?.name || "your team account"}` : "Sign in to preserve scenarios across devices."}</p><button className="workspace-button" onClick={() => isAuthenticated ? setWorkspaceOpen(true) : startLogin()}>{isAuthenticated ? <><Cloud size={13} /> Open scenario library</> : <><LogIn size={13} /> Sign in to save work</>}</button><div className="layer-toggle-row"><span><Layers3 size={12} /> Map layers</span><button className={showRoutes ? "active" : ""} onClick={() => setShowRoutes((current) => !current)}>Routes</button><button className={showZones ? "active" : ""} onClick={() => setShowZones((current) => !current)}>Zones</button></div></section>
+      <section className="rail-section export-section"><div className="section-title"><span>07 / handoff</span><h2>Exports</h2></div><button className="export-button" onClick={exportAssignments}><Download size={13} /> Download Assignments CSV</button><button className="export-button" onClick={exportCostSummary}><Download size={13} /> Download Cost Summary CSV</button><button className="export-button report" onClick={generateReport}><Printer size={13} /> Generate Decision Report</button></section>
+      <div className="run-area"><button className="run-button" onClick={runModel}><span><Play size={14} fill="currentColor" /> Run optimization</span><ChevronRight size={18} /></button><button className="tour-link" onClick={() => setIsTourOpen(true)}><Sparkles size={12} /> 90-second decision playbook</button></div>
     </aside>
     <main id="top" className="workspace">
-      <header className="topbar"><div className="crumb"><span className="desktop-only">GRIDPOINT</span><ChevronRight size={12} /><span>NETWORK DESIGN</span></div><div className="status"><i /> Permanent public app <span /> <time>{runStamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} model run</time></div></header>
+      <header className="topbar"><div className="crumb"><span className="desktop-only">GRIDPOINT</span><ChevronRight size={12} /><span>NETWORK DESIGN</span></div><div className="topbar-tools"><button className="command-button" onClick={() => setCommandOpen(true)}><Search size={13} /><span>Search actions</span><kbd>⌘ K</kbd></button><button className="icon-button" aria-label="Toggle dark or light mode" onClick={toggleTheme}>{theme === "light" ? <Moon size={14} /> : <Sun size={14} />}</button><button className="account-button" onClick={() => isAuthenticated ? setWorkspaceOpen(true) : startLogin()}>{authLoading ? "Checking account…" : isAuthenticated ? <><span className="account-initial">{user?.name?.slice(0, 1).toUpperCase() || "U"}</span>{user?.name || "Workspace"}</> : <><LogIn size={13} /> Sign in</>}</button><div className="status"><i /> <span className="desktop-only">Live model</span><time>{runStamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div></div></header>
       <div className="hero"><div><span className="eyebrow">WAREHOUSE NETWORK PLANNER <b>•</b> DECISION COCKPIT</span><h1>Find the lowest-friction<br />delivery network.</h1><p>Place hubs where demand is dense, keep the last mile short, and make every infrastructure trade-off visible before you commit.</p></div><div className="scenario-card"><div><Activity size={14} /><span>{params.surge ? `Peak demand +${params.surge}%` : "Baseline demand"}</span></div><b>{nodes.length} {dataset} neighborhoods · {Math.round(result.totalOrders).toLocaleString()} orders/day</b></div></div>
       <section className="metrics-grid">
         <div className="recommendation"><span>RECOMMENDATION</span><b>{result.hubs.length} hubs</b><p>{manualHubs ? "manual sensitivity layout" : "optimizer-selected layout"}</p></div>
@@ -451,7 +523,8 @@ export default function Home() {
       </section>
       {result.uncovered.length > 0 && <div className="model-alert"><TriangleAlert size={15} /><b>{result.uncovered.length} nodes are outside the {params.radius} km radius</b><span>{result.uncovered.map((node) => node.name).join(", ")}</span></div>}
       {result.hubs.some((hub) => hub.overCapacity) && <div className="model-alert capacity"><TriangleAlert size={15} /><b>Capacity limit exceeded</b><span>Increase the hub count or adjust the load limit.</span></div>}
-      <section className="map-card"><div className="card-header"><div><span className="eyebrow">LIVE NETWORK MODEL</span><h2>Demand, assignments & proposed hubs</h2></div><div className="map-summary"><MapPin size={13} /> {dataset} · drag hubs to reassign</div></div><MapPlot nodes={result.scenarioNodes} hubs={result.hubs} assignments={result.assignments} radius={activeRadius} locationName={dataset} dragHubId={dragHubId} onHubDrag={moveHub} onHubDragEnd={finishRecalculation} isRecalculating={isRecalculating} /></section>
+      <section className="readiness-strip"><div><span className="eyebrow">NETWORK READINESS</span><b>{readinessScore}/100</b><small>{readinessScore >= 85 ? "Decision-ready" : readinessScore >= 70 ? "Good with watchpoints" : "Needs a stronger plan"}</small></div><div className="readiness-meter"><i style={{ width: `${readinessScore}%` }} /></div><p><CheckCircle2 size={14} /> {result.coverage === 100 ? "All demand nodes meet the modeled service threshold." : `${result.radiusViolations} service exception${result.radiusViolations > 1 ? "s" : ""} to resolve before launch.`}</p><p><MapPin size={14} /> Highest delivery exposure: <b>{highestCostNode?.name}</b> · {money(highestCostNode?.cost || 0)}/day</p></section>
+      <section className="map-card"><div className="card-header"><div><span className="eyebrow">LIVE NETWORK MODEL</span><h2>Demand, assignments & proposed hubs</h2></div><div className="card-actions"><div className="map-summary"><MapPin size={13} /> {dataset} · drag hubs to reassign</div><button className={showRoutes ? "layer-pill active" : "layer-pill"} onClick={() => setShowRoutes((current) => !current)}>Routes</button><button className={showZones ? "layer-pill active" : "layer-pill"} onClick={() => setShowZones((current) => !current)}>Zones</button></div></div><MapPlot nodes={result.scenarioNodes} hubs={result.hubs} assignments={result.assignments} radius={activeRadius} locationName={dataset} dragHubId={dragHubId} onHubDrag={moveHub} onHubDragEnd={finishRecalculation} isRecalculating={isRecalculating} showRoutes={showRoutes} showZones={showZones} /></section>
       <section className="results-card">
         <nav className="tab-bar">{([ ["overview", Sparkles, "Decision brief"], ["assignments", Table2, "Assignments"], ["hubs", CircleGauge, "Hub loads"], ["curve", BarChart3, "Cost curve"] ] as const).map(([id, Icon, label]) => <button key={id} className={activeTab === id ? "active" : ""} onClick={() => setActiveTab(id)}><Icon size={13} /> {label}</button>)}</nav>
         <div className="tab-content">
@@ -468,7 +541,11 @@ export default function Home() {
           {activeTab === "curve" && <div><div className="tab-heading"><div><span className="eyebrow">SCENARIO ECONOMICS</span><h2>Find the cost-efficient hub count</h2><p>Delivery cost declines as hubs increase, while infrastructure cost rises. The lowest total cost is the point to take to a network decision.</p></div><div className="best-curve"><span>LOWEST TOTAL</span><b>{optimalCurve.k} hubs · {money(optimalCurve.total)}</b></div></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={curve}><defs><linearGradient id="totalFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#e87838" stopOpacity={.28} /><stop offset="100%" stopColor="#e87838" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#dce1da" strokeDasharray="3 3" /><XAxis dataKey="k" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#778179" }} label={{ value: "warehouses (k)", position: "insideBottom", offset: -2, style: { fill: "#778179", fontSize: 10 } }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#778179" }} tickFormatter={(value) => `₹${Math.round(value / 1000)}k`} /><Tooltip formatter={(value: number) => money(value)} contentStyle={{ borderRadius: 10, border: "1px solid #dce1da", boxShadow: "0 10px 30px rgba(29, 45, 35, .1)", fontSize: 12 }} /><Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} /><Area type="monotone" dataKey="total" name="Total cost" stroke="#e87838" strokeWidth={2.6} fill="url(#totalFill)" /><Line type="monotone" dataKey="delivery" name="Delivery cost" stroke="#4a8bf5" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="infrastructure" name="Infrastructure cost" stroke="#b487d9" strokeWidth={2} dot={false} /></AreaChart></ResponsiveContainer></div></div>}
         </div>
       </section>
-      <footer className="site-footer"><span><Sparkles size={14} /> GridPoint is fully client-side and ready to share.</span><a href="#top">Back to top ↑</a></footer>
+      <footer className="site-footer"><span><Cloud size={14} /> {isAuthenticated ? "Cloud workspace connected · scenarios are private to your account." : "Sign in to unlock private cloud scenarios and cross-device continuity."}</span><a href="#top">Back to top ↑</a></footer>
     </main>
+    {commandOpen && <div className="overlay-shell" role="dialog" aria-modal="true" aria-label="Command search" onMouseDown={() => setCommandOpen(false)}><section className="command-palette" onMouseDown={(event) => event.stopPropagation()}><div className="command-title"><Command size={15} /><div><b>GridPoint command search</b><span>Jump to a decision action</span></div><kbd>ESC</kbd></div><button onClick={() => openCommand(() => loadPreset("Bengaluru"))}><MapPin size={14} /><span>Load Bengaluru starter network</span><small>Dataset</small></button><button onClick={() => openCommand(() => loadPreset("Mumbai"))}><MapPin size={14} /><span>Load Mumbai starter network</span><small>Dataset</small></button><button onClick={() => openCommand(() => loadPreset("Delhi"))}><MapPin size={14} /><span>Load Delhi starter network</span><small>Dataset</small></button><button onClick={() => openCommand(() => generateReport())}><Printer size={14} /><span>Generate printable decision report</span><small>Export</small></button><button onClick={() => openCommand(() => setWorkspaceOpen(true))}><Cloud size={14} /><span>{isAuthenticated ? "Open cloud scenario library" : "Sign in to cloud workspace"}</span><small>Workspace</small></button><button onClick={() => openCommand(() => setSettingsOpen(true))}><Settings2 size={14} /><span>Open appearance settings</span><small>Theme</small></button></section></div>}
+    {workspaceOpen && <div className="overlay-shell" role="dialog" aria-modal="true" aria-label="GridPoint workspace" onMouseDown={() => setWorkspaceOpen(false)}><section className="workspace-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setWorkspaceOpen(false)} aria-label="Close workspace"><X size={16} /></button>{isAuthenticated ? <><div className="modal-heading"><span className="modal-avatar">{user?.name?.slice(0, 1).toUpperCase() || "U"}</span><div><span className="eyebrow">PRIVATE WORKSPACE</span><h2>{user?.name || "Your GridPoint workspace"}</h2><p>Saved scenarios are tied to this signed-in account.</p></div></div><div className="save-current"><div><Cloud size={15} /><span><b>Save this decision state</b><small>Capture nodes, guardrails, costs and manual hub edits.</small></span></div><div><input value={scenarioName} maxLength={120} placeholder={`${dataset} · Base network`} onChange={(event) => setScenarioName(event.target.value)} /><button disabled={saveScenarioMutation.isPending} onClick={saveScenario}>{saveScenarioMutation.isPending ? "Saving…" : "Save scenario"}</button></div></div><div className="scenario-library"><div className="library-title"><span>YOUR SCENARIOS</span><small>{savedRows.length} saved</small></div>{scenarioQuery.isLoading ? <div className="empty-library">Loading private scenarios…</div> : savedRows.length ? savedRows.map((scenario) => <article key={scenario.id}><div><b>{scenario.name}</b><span>{scenario.dataset} · updated {new Date(scenario.updatedAt).toLocaleDateString()}</span></div><div><button onClick={() => restoreScenario(scenario)}>Load</button><button className="danger-icon" aria-label={`Delete ${scenario.name}`} onClick={() => deleteScenarioMutation.mutate({ id: scenario.id })}><Trash2 size={14} /></button></div></article>) : <div className="empty-library"><Cloud size={17} /><b>No cloud scenarios yet</b><span>Save this plan to build a reusable decision library.</span></div>}</div><div className="workspace-footer"><button onClick={() => setSettingsOpen(true)}><Settings2 size={13} /> Appearance settings</button><button onClick={handleLogout}><LogOut size={13} /> Sign out</button></div></> : <div className="signed-out-workspace"><span className="workspace-logo"><Cloud size={23} /></span><span className="eyebrow">GRIDPOINT WORKSPACE</span><h2>Save the network, not just the screenshot.</h2><p>Sign in to keep private scenario snapshots, continue a decision on another device, and give your team a reliable starting point.</p><button className="primary-modal-button" onClick={startLogin}><LogIn size={15} /> Continue with secure sign in</button><small>Powered by managed Manus OAuth. No separate password is stored by GridPoint.</small></div>}</section></div>}
+    {settingsOpen && <div className="overlay-shell" role="dialog" aria-modal="true" aria-label="Appearance settings" onMouseDown={() => setSettingsOpen(false)}><section className="settings-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setSettingsOpen(false)} aria-label="Close appearance settings"><X size={16} /></button><span className="eyebrow">APPEARANCE</span><h2>Make the cockpit yours.</h2><p>Preferences stay on this browser and carry across GridPoint sessions.</p><div className="setting-group"><span>Color mode</span><div className="setting-options"><button className={theme === "light" ? "selected" : ""} onClick={() => theme === "dark" && toggleTheme?.()}><Sun size={15} /> Light</button><button className={theme === "dark" ? "selected" : ""} onClick={() => theme === "light" && toggleTheme?.()}><Moon size={15} /> Dark</button></div></div><div className="setting-group"><span>Accent</span><div className="accent-options">{(["orange", "teal", "violet"] as ThemeAccent[]).map((color) => <button key={color} className={`${color} ${accent === color ? "selected" : ""}`} onClick={() => setAccent(color)}><i /> {color}</button>)}</div></div><div className="settings-note"><PanelTop size={15} /><span>Command search is always one keystroke away with <kbd>⌘ K</kbd> or <kbd>Ctrl K</kbd>.</span></div></section></div>}
+    {isTourOpen && <div className="overlay-shell" role="dialog" aria-modal="true" aria-label="GridPoint decision playbook" onMouseDown={() => setIsTourOpen(false)}><section className="tour-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setIsTourOpen(false)} aria-label="Close playbook"><X size={16} /></button><span className="tour-spark"><Sparkles size={18} /></span><span className="eyebrow">90-SECOND PLAYBOOK</span><h2>Move from demand map to board-ready recommendation.</h2><ol><li><b>Load or upload demand.</b><span>Start with a city preset or add your own CSV rows.</span></li><li><b>Set guardrails, then drag.</b><span>Pick hub count and service radius; test sensitive hub moves directly on the map.</span></li><li><b>Check readiness and save.</b><span>Resolve red exceptions, export a report, and save the winning scenario to your cloud workspace.</span></li></ol><button className="primary-modal-button" onClick={() => { setIsTourOpen(false); setWorkspaceOpen(true); }}><Cloud size={15} /> Open workspace</button></section></div>}
   </div>;
 }
