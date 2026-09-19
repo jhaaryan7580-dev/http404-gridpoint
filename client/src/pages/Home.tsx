@@ -309,6 +309,52 @@ function csvEscape(value: string | number) {
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
+function normalizeCsvHeader(value: string) {
+  return value.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function parseCsvMatrix(text: string) {
+  const firstLine = text.split(/\r?\n/, 1)[0] || "";
+  const delimiter = firstLine.includes(";") && !firstLine.includes(",") ? ";" : ",";
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"') {
+      if (quoted && text[index + 1] === '"') { cell += '"'; index += 1; }
+      else quoted = !quoted;
+    } else if (character === delimiter && !quoted) {
+      row.push(cell); cell = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && text[index + 1] === "\n") index += 1;
+      row.push(cell); cell = "";
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+    } else {
+      cell += character;
+    }
+  }
+  if (cell || row.length) { row.push(cell); if (row.some((value) => value.trim())) rows.push(row); }
+  return rows;
+}
+
+function parseDemandCsv(text: string): DemandNode[] {
+  const rows = parseCsvMatrix(text);
+  const headers = rows.shift()?.map(normalizeCsvHeader) || [];
+  const findColumn = (aliases: string[]) => aliases.map((alias) => headers.indexOf(alias)).find((index) => index >= 0) ?? -1;
+  const nameIndex = findColumn(["name", "neighborhood", "neighbourhood", "node", "location", "demand_node"]);
+  const latIndex = findColumn(["lat", "latitude"]);
+  const lonIndex = findColumn(["lon", "lng", "longitude"]);
+  const orderIndex = findColumn(["orders", "daily_orders", "orders_day", "demand", "volume"]);
+  if ([nameIndex, latIndex, lonIndex, orderIndex].some((index) => index < 0)) return [];
+  return rows.map((values, index) => {
+    const numberValue = (column: number) => Number((values[column] || "").trim().replace(/,/g, ""));
+    return { id: `upload-${Date.now()}-${index}`, name: (values[nameIndex] || "").trim(), lat: numberValue(latIndex), lon: numberValue(lonIndex), orders: numberValue(orderIndex) };
+  }).filter((row) => row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders) && row.orders >= 0);
+}
+
 function downloadCsv(filename: string, headers: string[], rows: Array<Array<string | number>>) {
   const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
   const href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
@@ -432,13 +478,15 @@ export default function Home() {
     const file = event.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const rows = String(reader.result || "").trim().split(/\r?\n/); const headers = rows.shift()?.split(",").map((header) => header.trim().toLowerCase()) || [];
-      const nameIndex = headers.indexOf("name"); const latIndex = headers.indexOf("lat"); const lonIndex = headers.indexOf("lon"); const orderIndex = headers.indexOf("orders");
-      if ([nameIndex, latIndex, lonIndex, orderIndex].every((index) => index >= 0)) {
-        const parsed = rows.map((row, index) => { const values = row.split(",").map((value) => value.trim()); return { id: `upload-${Date.now()}-${index}`, name: values[nameIndex], lat: Number(values[latIndex]), lon: Number(values[lonIndex]), orders: Number(values[orderIndex]) }; }).filter((row) => row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders));
-        if (parsed.length >= 2) { setNodes(parsed); setDataset("Custom"); setManualHubs(null); setParams((current) => ({ ...current, k: Math.min(current.k, parsed.length) })); setRunStamp(new Date()); }
+      const parsed = parseDemandCsv(String(reader.result || ""));
+      if (parsed.length < 2) {
+        toast.error("CSV needs at least two valid rows with name, lat, lon, and orders columns.");
+        return;
       }
+      setNodes(parsed); setDataset("Custom"); setManualHubs(null); setParams((current) => ({ ...current, k: Math.min(current.k, parsed.length) })); setRunStamp(new Date());
+      toast.success(`Loaded ${parsed.length} demand nodes from ${file.name}`);
     };
+    reader.onerror = () => toast.error("Could not read that CSV file. Please try again.");
     reader.readAsText(file); event.target.value = "";
   };
 
