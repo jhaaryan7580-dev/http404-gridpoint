@@ -1,18 +1,19 @@
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, PointerEvent as ReactPointerEvent, useMemo, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
   Check,
   ChevronRight,
   CircleGauge,
-  FileUp,
+  Download,
+  GripVertical,
   Info,
   MapPin,
+  MousePointer2,
   Navigation,
   Play,
   Plus,
-  Route,
-  ShieldCheck,
+  Printer,
   Sparkles,
   Table2,
   TriangleAlert,
@@ -27,7 +28,6 @@ import {
   CartesianGrid,
   Legend,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -39,6 +39,7 @@ const EARTH_KM_PER_LAT = 111;
 
 type Algorithm = "kmeans" | "kmedoids";
 type Tab = "overview" | "assignments" | "hubs" | "curve";
+type DatasetKey = "Bengaluru" | "Mumbai" | "Delhi" | "Custom";
 
 type DemandNode = {
   id: string;
@@ -62,8 +63,8 @@ type Params = {
 };
 
 type Point = { lat: number; lon: number };
-type Assignment = DemandNode & {
-  adjustedOrders: number;
+type ScenarioNode = DemandNode & { adjustedOrders: number };
+type Assignment = ScenarioNode & {
   hubId: number;
   distance: number;
   cost: number;
@@ -78,7 +79,25 @@ type Hub = Point & {
   overCapacity: boolean;
 };
 
-const DEFAULT_NODES: DemandNode[] = [
+type NetworkResult = {
+  scenarioNodes: ScenarioNode[];
+  hubs: Hub[];
+  assignments: Assignment[];
+  deliveryCost: number;
+  infraCost: number;
+  totalCost: number;
+  baselineCost: number;
+  savings: number;
+  savingsPercent: number;
+  totalOrders: number;
+  weightedDistance: number;
+  totalDistance: number;
+  coverage: number;
+  uncovered: Assignment[];
+  radiusViolations: number;
+};
+
+const BENGALURU: DemandNode[] = [
   { id: "indiranagar", name: "Indiranagar", lat: 12.9719, lon: 77.6412, orders: 420 },
   { id: "koramangala", name: "Koramangala", lat: 12.9352, lon: 77.6245, orders: 610 },
   { id: "whitefield", name: "Whitefield", lat: 12.9698, lon: 77.75, orders: 380 },
@@ -96,6 +115,43 @@ const DEFAULT_NODES: DemandNode[] = [
   { id: "bellandur", name: "Bellandur", lat: 12.9257, lon: 77.6761, orders: 330 },
 ];
 
+const MUMBAI: DemandNode[] = [
+  { id: "andheri-west", name: "Andheri West", lat: 19.1364, lon: 72.8296, orders: 620 },
+  { id: "andheri-east", name: "Andheri East", lat: 19.1197, lon: 72.8468, orders: 520 },
+  { id: "bandra-west", name: "Bandra West", lat: 19.0596, lon: 72.8295, orders: 590 },
+  { id: "powai", name: "Powai", lat: 19.1176, lon: 72.906, orders: 410 },
+  { id: "ghatkopar", name: "Ghatkopar", lat: 19.0862, lon: 72.9081, orders: 390 },
+  { id: "chembur", name: "Chembur", lat: 19.0522, lon: 72.8995, orders: 320 },
+  { id: "worli", name: "Worli", lat: 19.0176, lon: 72.8164, orders: 440 },
+  { id: "lower-parel", name: "Lower Parel", lat: 18.9988, lon: 72.8308, orders: 470 },
+  { id: "dadar", name: "Dadar", lat: 19.0181, lon: 72.8428, orders: 360 },
+  { id: "vile-parle", name: "Vile Parle", lat: 19.1003, lon: 72.8419, orders: 340 },
+  { id: "malad", name: "Malad", lat: 19.1862, lon: 72.8487, orders: 380 },
+  { id: "borivali", name: "Borivali", lat: 19.2307, lon: 72.8567, orders: 260 },
+  { id: "mulund", name: "Mulund", lat: 19.1726, lon: 72.9562, orders: 230 },
+  { id: "kurla", name: "Kurla", lat: 19.0726, lon: 72.8826, orders: 300 },
+];
+
+const DELHI: DemandNode[] = [
+  { id: "connaught-place", name: "Connaught Place", lat: 28.6315, lon: 77.2167, orders: 610 },
+  { id: "hauz-khas", name: "Hauz Khas", lat: 28.5494, lon: 77.2001, orders: 430 },
+  { id: "saket", name: "Saket", lat: 28.5245, lon: 77.2066, orders: 410 },
+  { id: "dwarka", name: "Dwarka", lat: 28.5921, lon: 77.046, orders: 470 },
+  { id: "rohini", name: "Rohini", lat: 28.7495, lon: 77.0565, orders: 350 },
+  { id: "pitampura", name: "Pitampura", lat: 28.7037, lon: 77.132, orders: 290 },
+  { id: "karol-bagh", name: "Karol Bagh", lat: 28.6517, lon: 77.1907, orders: 370 },
+  { id: "lajpat-nagar", name: "Lajpat Nagar", lat: 28.5677, lon: 77.2432, orders: 390 },
+  { id: "mayur-vihar", name: "Mayur Vihar", lat: 28.6083, lon: 77.2965, orders: 340 },
+  { id: "preet-vihar", name: "Preet Vihar", lat: 28.6405, lon: 77.2949, orders: 250 },
+  { id: "shahdara", name: "Shahdara", lat: 28.6733, lon: 77.289, orders: 280 },
+  { id: "janakpuri", name: "Janakpuri", lat: 28.6219, lon: 77.0878, orders: 330 },
+  { id: "vasant-kunj", name: "Vasant Kunj", lat: 28.5284, lon: 77.1517, orders: 300 },
+  { id: "model-town", name: "Model Town", lat: 28.7041, lon: 77.1908, orders: 240 },
+  { id: "nizamuddin", name: "Nizamuddin", lat: 28.591, lon: 77.2446, orders: 310 },
+];
+
+const DATASETS: Record<Exclude<DatasetKey, "Custom">, DemandNode[]> = { Bengaluru: BENGALURU, Mumbai: MUMBAI, Delhi: DELHI };
+
 const DEFAULT_PARAMS: Params = {
   k: 3,
   algorithm: "kmeans",
@@ -104,13 +160,14 @@ const DEFAULT_PARAMS: Params = {
   useVehicles: false,
   useCapacity: false,
   capacity: 1800,
-  useRadius: false,
-  radius: 10,
+  useRadius: true,
+  radius: 8,
   surge: 0,
 };
 
 const money = (value: number) => `₹${Math.round(value).toLocaleString("en-IN")}`;
 const oneDecimal = (value: number) => Number(value.toFixed(1));
+const cloneNodes = (nodes: DemandNode[]) => nodes.map((node) => ({ ...node }));
 
 function distanceKm(a: Point, b: Point) {
   const latKm = (a.lat - b.lat) * EARTH_KM_PER_LAT;
@@ -126,35 +183,28 @@ function weightedCentroid(nodes: Array<DemandNode & { adjustedOrders?: number }>
   };
 }
 
-function buildCenters(nodes: Array<DemandNode & { adjustedOrders: number }>, k: number, algorithm: Algorithm) {
+function buildCenters(nodes: ScenarioNode[], k: number, algorithm: Algorithm) {
   const count = Math.max(1, Math.min(k, nodes.length));
   const ranked = [...nodes].sort((a, b) => b.adjustedOrders - a.adjustedOrders);
-  const centers: Point[] = [ranked[0]];
+  const centers: Point[] = [{ lat: ranked[0].lat, lon: ranked[0].lon }];
   while (centers.length < count) {
     let candidate = ranked[0];
     let score = -Infinity;
     for (const node of nodes) {
       const nearest = Math.min(...centers.map((center) => distanceKm(node, center)));
       const nextScore = nearest * nearest * node.adjustedOrders;
-      if (nextScore > score) {
-        score = nextScore;
-        candidate = node;
-      }
+      if (nextScore > score) { score = nextScore; candidate = node; }
     }
     centers.push({ lat: candidate.lat, lon: candidate.lon });
   }
-  for (let iteration = 0; iteration < 30; iteration += 1) {
-    const clusters = centers.map(() => [] as Array<DemandNode & { adjustedOrders: number }>);
+  for (let iteration = 0; iteration < 32; iteration += 1) {
+    const clusters = centers.map(() => [] as ScenarioNode[]);
     nodes.forEach((node) => {
       const nearestId = centers.reduce((best, center, idx) => distanceKm(node, center) < distanceKm(node, centers[best]) ? idx : best, 0);
       clusters[nearestId].push(node);
     });
     centers.forEach((center, idx) => {
-      if (clusters[idx].length) {
-        const next = weightedCentroid(clusters[idx]);
-        center.lat = next.lat;
-        center.lon = next.lon;
-      }
+      if (clusters[idx].length) Object.assign(center, weightedCentroid(clusters[idx]));
     });
   }
   if (algorithm === "kmedoids") {
@@ -169,32 +219,22 @@ function buildCenters(nodes: Array<DemandNode & { adjustedOrders: number }>, k: 
   return centers;
 }
 
-function solveNetwork(nodes: DemandNode[], params: Params) {
+function solveNetwork(nodes: DemandNode[], params: Params, centerOverride: Point[] | null = null): NetworkResult {
   const scenarioNodes = nodes.map((node) => ({ ...node, adjustedOrders: Math.round(node.orders * (1 + params.surge / 100)) }));
-  const centers = buildCenters(scenarioNodes, params.k, params.algorithm);
+  const useOverride = centerOverride && centerOverride.length === Math.min(params.k, nodes.length);
+  const centers = useOverride ? centerOverride!.map((center) => ({ ...center })) : buildCenters(scenarioNodes, params.k, params.algorithm);
   const loads = centers.map(() => 0);
   const assignments: Assignment[] = [];
-  [...scenarioNodes]
-    .sort((a, b) => b.adjustedOrders - a.adjustedOrders)
-    .forEach((node) => {
-      const ranked = centers.map((center, hubId) => ({ hubId, distance: distanceKm(node, center) })).sort((a, b) => a.distance - b.distance);
-      const eligible = params.useCapacity
-        ? ranked.find((choice) => loads[choice.hubId] + node.adjustedOrders <= params.capacity)
-        : ranked[0];
-      const chosen = eligible || ranked[0];
-      loads[chosen.hubId] += node.adjustedOrders;
-      const withinRadius = !params.useRadius || chosen.distance <= params.radius;
-      const vehicle = params.useVehicles ? chosen.distance <= 5 ? "Bike" : chosen.distance <= 15 ? "Van" : "Truck" : "Standard";
-      const rate = params.useVehicles ? vehicle === "Bike" ? 4 : vehicle === "Van" ? 7 : 12 : params.costPerKm;
-      assignments.push({
-        ...node,
-        hubId: chosen.hubId,
-        distance: chosen.distance,
-        cost: chosen.distance * rate * node.adjustedOrders,
-        vehicle,
-        withinRadius,
-      });
-    });
+  [...scenarioNodes].sort((a, b) => b.adjustedOrders - a.adjustedOrders).forEach((node) => {
+    const ranked = centers.map((center, hubId) => ({ hubId, distance: distanceKm(node, center) })).sort((a, b) => a.distance - b.distance);
+    const eligible = params.useCapacity ? ranked.find((choice) => loads[choice.hubId] + node.adjustedOrders <= params.capacity) : ranked[0];
+    const chosen = eligible || ranked[0];
+    loads[chosen.hubId] += node.adjustedOrders;
+    const withinRadius = !params.useRadius || chosen.distance <= params.radius;
+    const vehicle = params.useVehicles ? chosen.distance <= 5 ? "Bike" : chosen.distance <= 15 ? "Van" : "Truck" : "Standard";
+    const rate = params.useVehicles ? vehicle === "Bike" ? 4 : vehicle === "Van" ? 7 : 12 : params.costPerKm;
+    assignments.push({ ...node, hubId: chosen.hubId, distance: chosen.distance, cost: chosen.distance * rate * node.adjustedOrders, vehicle, withinRadius });
+  });
   assignments.sort((a, b) => nodes.findIndex((node) => node.id === a.id) - nodes.findIndex((node) => node.id === b.id));
   const hubs: Hub[] = centers.map((center, hubId) => ({
     ...center,
@@ -216,22 +256,17 @@ function solveNetwork(nodes: DemandNode[], params: Params) {
   }, 0);
   const baselineCost = baselineDelivery + params.fixedCost;
   const totalCost = deliveryCost + infraCost;
-  const savings = baselineCost - totalCost;
+  const uncovered = assignments.filter((assignment) => !assignment.withinRadius);
   return {
-    scenarioNodes,
-    hubs,
-    assignments,
-    deliveryCost,
-    infraCost,
-    totalCost,
-    baselineCost,
-    savings,
-    savingsPercent: baselineCost ? (savings / baselineCost) * 100 : 0,
+    scenarioNodes, hubs, assignments, deliveryCost, infraCost, totalCost, baselineCost,
+    savings: baselineCost - totalCost,
+    savingsPercent: baselineCost ? ((baselineCost - totalCost) / baselineCost) * 100 : 0,
     totalOrders,
     weightedDistance,
     totalDistance: assignments.reduce((sum, assignment) => sum + assignment.distance, 0),
-    coverage: (assignments.filter((assignment) => assignment.withinRadius).length / assignments.length) * 100,
-    uncovered: assignments.filter((assignment) => !assignment.withinRadius),
+    coverage: params.useRadius ? ((assignments.length - uncovered.length) / assignments.length) * 100 : 100,
+    uncovered,
+    radiusViolations: uncovered.length,
   };
 }
 
@@ -243,178 +278,196 @@ function buildCurve(nodes: DemandNode[], params: Params) {
   });
 }
 
-function Metric({ label, value, detail, tone = "" }: { label: string; value: string; detail: string; tone?: string }) {
-  return <div className={`metric ${tone}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></div>;
+function Metric({ label, value, detail, tone = "", tooltip }: { label: string; value: string; detail: string; tone?: string; tooltip?: string }) {
+  return <div className={`metric ${tone}`}><span>{label}{tooltip && <i className="metric-info" tabIndex={0} aria-label={tooltip}><Info size={11} /><em>{tooltip}</em></i>}</span><strong>{value}</strong><small>{detail}</small></div>;
 }
 
-function MapPlot({ nodes, hubs, assignments, radius }: { nodes: DemandNode[]; hubs: Hub[]; assignments: Assignment[]; radius: number | null }) {
-  const lats = nodes.map((node) => node.lat);
-  const lons = nodes.map((node) => node.lon);
-  const minLat = Math.min(...lats) - 0.02;
-  const maxLat = Math.max(...lats) + 0.02;
-  const minLon = Math.min(...lons) - 0.02;
-  const maxLon = Math.max(...lons) + 0.02;
-  const locate = (point: Point) => ({
-    x: 7 + ((point.lon - minLon) / (maxLon - minLon)) * 86,
-    y: 92 - ((point.lat - minLat) / (maxLat - minLat)) * 84,
-  });
-  const maxOrders = Math.max(...nodes.map((node) => node.orders));
+function csvEscape(value: string | number) {
+  const text = String(value);
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: Array<Array<string | number>>) {
+  const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+  const href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+  const anchor = document.createElement("a");
+  anchor.href = href; anchor.download = filename; anchor.click(); URL.revokeObjectURL(href);
+}
+
+function MapPlot({
+  nodes, hubs, assignments, radius, locationName, dragHubId, onHubDrag, onHubDragEnd, isRecalculating,
+}: {
+  nodes: ScenarioNode[]; hubs: Hub[]; assignments: Assignment[]; radius: number | null; locationName: string;
+  dragHubId: number | null; onHubDrag: (hubId: number, point: Point) => void; onHubDragEnd: () => void; isRecalculating: boolean;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const lats = nodes.map((node) => node.lat); const lons = nodes.map((node) => node.lon);
+  const minLat = Math.min(...lats) - 0.02; const maxLat = Math.max(...lats) + 0.02;
+  const minLon = Math.min(...lons) - 0.02; const maxLon = Math.max(...lons) + 0.02;
+  const locate = (point: Point) => ({ x: 7 + ((point.lon - minLon) / (maxLon - minLon)) * 86, y: 92 - ((point.lat - minLat) / (maxLat - minLat)) * 84 });
+  const maxOrders = Math.max(...nodes.map((node) => node.adjustedOrders));
+  const toPoint = (event: Pick<ReactPointerEvent<SVGSVGElement>, "clientX" | "clientY">): Point => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return { lat: minLat, lon: minLon };
+    const x = Math.max(7, Math.min(93, ((event.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(8, Math.min(92, ((event.clientY - rect.top) / rect.height) * 100));
+    return { lon: minLon + ((x - 7) / 86) * (maxLon - minLon), lat: minLat + ((92 - y) / 84) * (maxLat - minLat) };
+  };
+  const hubRadius = (hubId: number) => Math.max(3, ...assignments.filter((assignment) => assignment.hubId === hubId).map((assignment) => assignment.distance + 1));
   return <div className="map-shell">
-    <div className="map-grid map-grid-a" /><div className="map-grid map-grid-b" /><div className="map-label north">NORTH BENGALURU</div><div className="map-label south">SOUTH CORRIDOR</div><div className="map-label east">EAST TECH BELT</div>
-    <svg className="network-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Demand nodes and proposed warehouse hubs">
-      {radius && hubs.map((hub) => {
-        const { x, y } = locate(hub);
-        const radiusPercent = (radius / (maxLat - minLat) / EARTH_KM_PER_LAT) * 84;
-        return <circle key={`ring-${hub.hubId}`} cx={x} cy={y} r={radiusPercent} className="radius-ring" style={{ stroke: PALETTE[hub.hubId % PALETTE.length] }} />;
-      })}
-      {assignments.map((assignment) => {
-        const node = locate(assignment);
-        const hub = locate(hubs[assignment.hubId]);
-        return <line key={`route-${assignment.id}`} x1={node.x} y1={node.y} x2={hub.x} y2={hub.y} className={assignment.withinRadius ? "route-line" : "route-line out-of-range"} style={{ stroke: PALETTE[assignment.hubId % PALETTE.length] }} />;
-      })}
-      {nodes.map((node) => {
-        const { x, y } = locate(node);
-        const assignment = assignments.find((item) => item.id === node.id);
-        const radius = 1.2 + (node.orders / maxOrders) * 2.25;
-        return <g key={node.id}><circle cx={x} cy={y} r={radius + .65} className="node-halo" /><circle cx={x} cy={y} r={radius} className="demand-node" style={{ fill: assignment ? PALETTE[assignment.hubId % PALETTE.length] : "#e87838" }} /><title>{node.name}: {node.orders} orders/day</title></g>;
-      })}
+    <div className="map-grid map-grid-a" /><div className="map-grid map-grid-b" /><div className="map-label north">NORTH DISTRICT</div><div className="map-label south">SOUTH CORRIDOR</div><div className="map-label east">EAST DEMAND BELT</div>
+    <div className="drag-hint"><MousePointer2 size={13} /><span>Drag a hub to test sensitivity</span></div>
+    {isRecalculating && <div className="recalculating"><Activity size={13} /><span>Recalculating…</span></div>}
+    <svg ref={svgRef} className="network-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Demand nodes and proposed warehouse hubs" onPointerMove={(event) => { if (dragHubId !== null) onHubDrag(dragHubId, toPoint(event)); }} onPointerUp={onHubDragEnd} onPointerCancel={onHubDragEnd}>
       {hubs.map((hub) => {
-        const { x, y } = locate(hub);
-        return <g key={`hub-${hub.hubId}`}><rect x={x - 2.5} y={y - 2.5} width="5" height="5" rx=".8" className="hub-marker" style={{ fill: PALETTE[hub.hubId % PALETTE.length] }} /><text x={x} y={y + .65} className="hub-text">H{hub.hubId + 1}</text></g>;
+        const { x, y } = locate(hub); const maxDistance = hubRadius(hub.hubId);
+        const rx = Math.min(26, (maxDistance / (maxLon - minLon) / (EARTH_KM_PER_LAT * Math.cos(hub.lat * Math.PI / 180))) * 86 * 1.14);
+        const ry = Math.min(26, (maxDistance / (maxLat - minLat) / EARTH_KM_PER_LAT) * 84 * 1.14);
+        return <ellipse key={`zone-${hub.hubId}`} cx={x} cy={y} rx={rx} ry={ry} className="catchment-zone" style={{ fill: PALETTE[hub.hubId % PALETTE.length] }} />;
       })}
+      {radius && hubs.map((hub) => { const { x, y } = locate(hub); const radiusPercent = (radius / (maxLat - minLat) / EARTH_KM_PER_LAT) * 84; return <circle key={`ring-${hub.hubId}`} cx={x} cy={y} r={radiusPercent} className="radius-ring" style={{ stroke: PALETTE[hub.hubId % PALETTE.length] }} />; })}
+      {assignments.map((assignment) => { const node = locate(assignment); const hub = locate(hubs[assignment.hubId]); return <line key={`route-${assignment.id}`} x1={node.x} y1={node.y} x2={hub.x} y2={hub.y} className={assignment.withinRadius ? "route-line" : "route-line out-of-range"} style={{ stroke: PALETTE[assignment.hubId % PALETTE.length] }} />; })}
+      {nodes.map((node) => { const { x, y } = locate(node); const assignment = assignments.find((item) => item.id === node.id); const nodeRadius = 1.2 + (node.adjustedOrders / maxOrders) * 2.25; return <g key={node.id}><circle cx={x} cy={y} r={nodeRadius + .75} className={assignment?.withinRadius ? "node-halo" : "node-halo violation-halo"} /><circle cx={x} cy={y} r={nodeRadius} className={assignment?.withinRadius ? "demand-node" : "demand-node violation-node"} style={{ fill: assignment?.withinRadius ? PALETTE[assignment.hubId % PALETTE.length] : "#c9575f" }} /><title>{node.name}: {node.adjustedOrders} orders/day · H{(assignment?.hubId || 0) + 1}</title></g>; })}
+      {hubs.map((hub) => { const { x, y } = locate(hub); return <g key={`hub-${hub.hubId}`} className={`draggable-hub ${dragHubId === hub.hubId ? "dragging" : ""}`} onPointerDown={(event) => { event.stopPropagation(); try { svgRef.current?.setPointerCapture(event.pointerId); } catch { /* synthetic pointer events do not have captureable hardware pointers */ } onHubDrag(hub.hubId, toPoint(event)); }}><rect x={x - 2.75} y={y - 2.75} width="5.5" height="5.5" rx=".85" className="hub-marker" style={{ fill: PALETTE[hub.hubId % PALETTE.length] }} /><GripVertical x={x - 1.25} y={y - 1.1} width="2.5" height="2.5" className="hub-grip" /><text x={x} y={y + .7} className="hub-text">H{hub.hubId + 1}</text><title>Drag H{hub.hubId + 1} to reposition this warehouse</title></g>; })}
     </svg>
-    <div className="map-compass"><Navigation size={15} /> <span>City-scale planning plot</span></div>
-    <div className="map-legend"><span><i className="legend-node" /> Demand node</span><span><i className="legend-hub" /> Proposed hub</span>{radius && <span><i className="legend-radius" /> Radius</span>}</div>
+    <div className="map-compass"><Navigation size={15} /> <span>{locationName} · local planning grid</span></div>
+    <div className="map-legend"><span><i className="legend-node" /> Assigned demand</span><span><i className="legend-hub" /> Draggable hub</span>{radius && <span><i className="legend-radius" /> {radius} km radius</span>}</div>
   </div>;
 }
 
 export default function Home() {
-  const [nodes, setNodes] = useState<DemandNode[]>(DEFAULT_NODES);
+  const [nodes, setNodes] = useState<DemandNode[]>(cloneNodes(BENGALURU));
   const [params, setParams] = useState<Params>(DEFAULT_PARAMS);
+  const [dataset, setDataset] = useState<DatasetKey>("Bengaluru");
+  const [manualHubs, setManualHubs] = useState<Point[] | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [runStamp, setRunStamp] = useState(() => new Date());
+  const [dragHubId, setDragHubId] = useState<number | null>(null);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const result = useMemo(() => solveNetwork(nodes, params), [nodes, params]);
+  const recalculationTimer = useRef<number | null>(null);
+  const result = useMemo(() => solveNetwork(nodes, params, manualHubs), [nodes, params, manualHubs]);
   const curve = useMemo(() => buildCurve(nodes, params), [nodes, params]);
+  const scenarioComparison = useMemo(() => [0, 15, 30].map((surge) => ({ surge, ...solveNetwork(nodes, { ...params, surge }, manualHubs) })), [nodes, params, manualHubs]);
   const optimalCurve = curve.reduce((best, point) => point.total < best.total ? point : best, curve[0]);
+  const activeRadius = params.useRadius ? params.radius : null;
 
   const updateParams = (patch: Partial<Params>) => setParams((current) => ({ ...current, ...patch }));
-  const updateNode = (id: string, patch: Partial<DemandNode>) => setNodes((current) => current.map((node) => node.id === id ? { ...node, ...patch } : node));
-  const addNode = () => setNodes((current) => [...current, { id: `node-${Date.now()}`, name: `New node ${current.length + 1}`, lat: 12.97, lon: 77.61, orders: 100 }]);
-  const removeNode = (id: string) => setNodes((current) => current.length > 2 ? current.filter((node) => node.id !== id) : current);
-  const runModel = () => setRunStamp(new Date());
+  const updateNode = (id: string, patch: Partial<DemandNode>) => { setDataset("Custom"); setManualHubs(null); setNodes((current) => current.map((node) => node.id === id ? { ...node, ...patch } : node)); };
+  const addNode = () => { setDataset("Custom"); setManualHubs(null); setNodes((current) => [...current, { id: `node-${Date.now()}`, name: `New node ${current.length + 1}`, lat: 12.97, lon: 77.61, orders: 100 }]); };
+  const removeNode = (id: string) => { setDataset("Custom"); setManualHubs(null); setNodes((current) => current.length > 2 ? current.filter((node) => node.id !== id) : current); };
+  const runModel = () => { setManualHubs(null); setRunStamp(new Date()); };
+  const finishRecalculation = () => { setDragHubId(null); window.setTimeout(() => setIsRecalculating(false), 180); };
+  const moveHub = (hubId: number, point: Point) => {
+    setDragHubId(hubId); setIsRecalculating(true);
+    setManualHubs((current) => {
+      const base = current && current.length === result.hubs.length ? current : result.hubs.map((hub) => ({ lat: hub.lat, lon: hub.lon }));
+      return base.map((hub, index) => index === hubId ? point : hub);
+    });
+    if (recalculationTimer.current) window.clearTimeout(recalculationTimer.current);
+    recalculationTimer.current = window.setTimeout(() => setIsRecalculating(false), 260);
+    setRunStamp(new Date());
+  };
+
+  const loadPreset = (name: Exclude<DatasetKey, "Custom">) => {
+    const next = cloneNodes(DATASETS[name]);
+    setNodes(next); setDataset(name); setManualHubs(null); setParams((current) => ({ ...current, k: Math.min(3, next.length), surge: 0 })); setRunStamp(new Date());
+  };
 
   const uploadCsv = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const file = event.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const text = String(reader.result || "");
-      const rows = text.trim().split(/\r?\n/);
-      const headers = rows.shift()?.split(",").map((header) => header.trim().toLowerCase()) || [];
+      const rows = String(reader.result || "").trim().split(/\r?\n/); const headers = rows.shift()?.split(",").map((header) => header.trim().toLowerCase()) || [];
       const nameIndex = headers.indexOf("name"); const latIndex = headers.indexOf("lat"); const lonIndex = headers.indexOf("lon"); const orderIndex = headers.indexOf("orders");
       if ([nameIndex, latIndex, lonIndex, orderIndex].every((index) => index >= 0)) {
-        const parsed = rows.map((row, index) => {
-          const values = row.split(",").map((value) => value.trim());
-          return { id: `upload-${Date.now()}-${index}`, name: values[nameIndex], lat: Number(values[latIndex]), lon: Number(values[lonIndex]), orders: Number(values[orderIndex]) };
-        }).filter((row) => row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders));
-        if (parsed.length >= 2) setNodes(parsed);
+        const parsed = rows.map((row, index) => { const values = row.split(",").map((value) => value.trim()); return { id: `upload-${Date.now()}-${index}`, name: values[nameIndex], lat: Number(values[latIndex]), lon: Number(values[lonIndex]), orders: Number(values[orderIndex]) }; }).filter((row) => row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders));
+        if (parsed.length >= 2) { setNodes(parsed); setDataset("Custom"); setManualHubs(null); setParams((current) => ({ ...current, k: Math.min(current.k, parsed.length) })); setRunStamp(new Date()); }
       }
     };
-    reader.readAsText(file);
-    event.target.value = "";
+    reader.readAsText(file); event.target.value = "";
+  };
+
+  const exportAssignments = () => downloadCsv("gridpoint-assignments.csv", ["Neighborhood", "Lat", "Lon", "Orders", "Assigned Hub", "Distance to Hub"], result.assignments.map((assignment) => [assignment.name, assignment.lat, assignment.lon, assignment.adjustedOrders, `H${assignment.hubId + 1}`, oneDecimal(assignment.distance)]));
+  const exportCostSummary = () => downloadCsv("gridpoint-cost-summary.csv", ["Metric", "Value"], [["Dataset", dataset], ["Demand scenario", params.surge ? `+${params.surge}%` : "Base"], ["Number of hubs", result.hubs.length], ["Total cost", money(result.totalCost)], ["Delivery cost", money(result.deliveryCost)], ["Infrastructure / fixed cost", money(result.infraCost)], ["Single hub baseline", money(result.baselineCost)], ["Savings vs. single hub", `${oneDecimal(result.savingsPercent)}%`], ["Weighted average leg", `${oneDecimal(result.weightedDistance)} km`], ["Max service radius", `${params.radius} km`], ["Radius violations", result.radiusViolations], ["Service level", `${oneDecimal(result.coverage)}%`]]);
+  const generateReport = () => {
+    const report = window.open("", "_blank", "noopener,noreferrer"); if (!report) return;
+    const rows = result.assignments.map((assignment) => `<tr><td>${assignment.name}</td><td>H${assignment.hubId + 1}</td><td>${oneDecimal(assignment.distance)} km</td><td>${assignment.adjustedOrders.toLocaleString()}</td></tr>`).join("");
+    report.document.write(`<!doctype html><html><head><title>GridPoint decision report</title><style>body{font-family:Arial,sans-serif;color:#1d2b24;margin:42px}h1{font-size:30px;margin:0 0 6px}p{color:#64736a}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:28px 0}.card{border:1px solid #dbe1da;border-radius:9px;padding:15px}.label{color:#778179;font-size:11px;text-transform:uppercase;letter-spacing:.08em}.value{font-size:23px;font-weight:700;margin-top:5px}table{width:100%;border-collapse:collapse;margin-top:22px}th,td{padding:9px;border-bottom:1px solid #dbe1da;text-align:left;font-size:12px}th{color:#778179;font-size:10px;text-transform:uppercase}@media print{body{margin:24px}}</style></head><body><div class="label">GRIDPOINT · DECISION REPORT</div><h1>${dataset} warehouse network</h1><p>${params.surge ? `Peak demand +${params.surge}%` : "Base demand"} · ${result.totalOrders.toLocaleString()} daily orders · ${result.hubs.length} hubs</p><section class="grid"><div class="card"><div class="label">Total cost</div><div class="value">${money(result.totalCost)}</div></div><div class="card"><div class="label">Modeled savings</div><div class="value">${oneDecimal(result.savingsPercent)}%</div></div><div class="card"><div class="label">Service level</div><div class="value">${oneDecimal(result.coverage)}%</div></div><div class="card"><div class="label">Delivery cost</div><div class="value">${money(result.deliveryCost)}</div></div><div class="card"><div class="label">Infrastructure</div><div class="value">${money(result.infraCost)}</div></div><div class="card"><div class="label">Weighted avg. leg</div><div class="value">${oneDecimal(result.weightedDistance)} km</div></div></section><h2>Assignment audit</h2><table><thead><tr><th>Neighborhood</th><th>Assigned hub</th><th>Distance</th><th>Orders</th></tr></thead><tbody>${rows}</tbody></table><p>Model assumptions: weighted k-means, local Euclidean distance, fixed cost per hub, and daily order volume as demand weight.</p></body></html>`);
+    report.document.close(); window.setTimeout(() => report.print(), 250);
   };
 
   return <div className="site-shell">
     <aside className="control-rail">
-      <div className="rail-top">
-        <a href="#top" className="brand" aria-label="GridPoint home"><span className="brand-sigil">⌁</span><span><b>GRIDPOINT</b><small>NETWORK DESIGN LAB</small></span></a>
-        <span className="version-chip">LIVE</span>
-      </div>
+      <div className="rail-top"><a href="#top" className="brand" aria-label="GridPoint home"><span className="brand-sigil">⌁</span><span><b>GRIDPOINT</b><small>NETWORK DESIGN LAB</small></span></a><span className="version-chip">LIVE</span></div>
       <div className="rail-intro"><span className="eyebrow">MODEL CONTROLS</span><p>Build an explainable network plan from raw demand data.</p></div>
-
       <section className="rail-section">
         <div className="section-title"><span>01 / demand map</span><h2>Demand nodes</h2></div>
         <div className="rail-stats"><div><b>{nodes.length}</b><span>nodes</span></div><div><b>{Math.round(nodes.reduce((sum, node) => sum + node.orders, 0)).toLocaleString()}</b><span>orders/day</span></div></div>
+        <div className="preset-row" aria-label="Sample dataset presets">{(["Bengaluru", "Mumbai", "Delhi"] as const).map((name) => <button key={name} className={dataset === name ? "active" : ""} onClick={() => loadPreset(name)}>Load {name}</button>)}</div>
         <input className="sr-only" ref={fileRef} type="file" accept=".csv" onChange={uploadCsv} />
         <button className="upload-button" onClick={() => fileRef.current?.click()}><Upload size={14} /> Upload CSV <small>name · lat · lon · orders</small></button>
         <div className="node-table-wrap"><table className="node-table"><thead><tr><th>node</th><th>lat</th><th>lon</th><th>orders</th><th /></tr></thead><tbody>{nodes.map((node) => <tr key={node.id}><td><input aria-label={`${node.name} name`} value={node.name} onChange={(event) => updateNode(node.id, { name: event.target.value })} /></td><td><input aria-label={`${node.name} latitude`} value={node.lat} onChange={(event) => updateNode(node.id, { lat: Number(event.target.value) || 0 })} /></td><td><input aria-label={`${node.name} longitude`} value={node.lon} onChange={(event) => updateNode(node.id, { lon: Number(event.target.value) || 0 })} /></td><td><input aria-label={`${node.name} orders`} value={node.orders} onChange={(event) => updateNode(node.id, { orders: Number(event.target.value) || 0 })} /></td><td><button className="remove-node" onClick={() => removeNode(node.id)} aria-label={`Remove ${node.name}`}><X size={12} /></button></td></tr>)}</tbody></table></div>
         <button className="add-node" onClick={addNode}><Plus size={13} /> Add demand node</button>
       </section>
-
       <section className="rail-section">
         <div className="section-title"><span>02 / network</span><h2>Hub strategy</h2></div>
         <label className="control-label">Number of warehouses <b>{params.k}</b></label>
-        <input className="range-control" type="range" min="1" max={Math.min(8, nodes.length)} value={params.k} onChange={(event) => updateParams({ k: Number(event.target.value) })} />
+        <input className="range-control" type="range" min="1" max={Math.min(8, nodes.length)} value={Math.min(params.k, nodes.length)} onChange={(event) => { setManualHubs(null); updateParams({ k: Number(event.target.value) }); }} />
         <div className="range-labels"><span>1 hub</span><span>{Math.min(8, nodes.length)} hubs</span></div>
         <label className="control-label top-gap">Placement logic</label>
-        <select value={params.algorithm} onChange={(event) => updateParams({ algorithm: event.target.value as Algorithm })}><option value="kmeans">Optimal point · weighted k-means</option><option value="kmedoids">Existing node · weighted k-medoids</option></select>
+        <select value={params.algorithm} onChange={(event) => { setManualHubs(null); updateParams({ algorithm: event.target.value as Algorithm }); }}><option value="kmeans">Optimal point · weighted k-means</option><option value="kmedoids">Existing node · weighted k-medoids</option></select>
+        {manualHubs && <div className="manual-mode"><MousePointer2 size={12} /><span>Manual hub positions active</span><button onClick={runModel}>Reset</button></div>}
       </section>
-
       <section className="rail-section">
         <div className="section-title"><span>03 / economics</span><h2>Cost model</h2></div>
         <div className="inline-controls"><label><span>Delivery ₹ / km / order</span><input type="number" min="0" step=".5" value={params.costPerKm} onChange={(event) => updateParams({ costPerKm: Number(event.target.value) || 0 })} /></label><label><span>Fixed ₹ / hub</span><input type="number" min="0" step="100" value={params.fixedCost} onChange={(event) => updateParams({ fixedCost: Number(event.target.value) || 0 })} /></label></div>
         <label className="toggle-control"><input type="checkbox" checked={params.useVehicles} onChange={(event) => updateParams({ useVehicles: event.target.checked })} /><span><b>Use vehicle mix</b><small>Bike, van, and truck rate selection</small></span></label>
       </section>
-
       <section className="rail-section">
         <div className="section-title"><span>04 / resilience</span><h2>Guardrails</h2></div>
         <label className="toggle-control"><input type="checkbox" checked={params.useCapacity} onChange={(event) => updateParams({ useCapacity: event.target.checked })} /><span><b>Warehouse capacity</b><small>Keep demand within hub limits</small></span></label>
         {params.useCapacity && <label className="reveal-field"><span>Maximum orders / hub</span><input type="number" min="1" step="50" value={params.capacity} onChange={(event) => updateParams({ capacity: Number(event.target.value) || 1 })} /></label>}
-        <label className="toggle-control"><input type="checkbox" checked={params.useRadius} onChange={(event) => updateParams({ useRadius: event.target.checked })} /><span><b>Maximum service radius</b><small>Flag nodes outside the ring</small></span></label>
-        {params.useRadius && <label className="reveal-field"><span>Maximum radius (km)</span><input type="number" min="1" value={params.radius} onChange={(event) => updateParams({ radius: Number(event.target.value) || 1 })} /></label>}
+        <label className="toggle-control"><input type="checkbox" checked={params.useRadius} onChange={(event) => updateParams({ useRadius: event.target.checked })} /><span><b>Service radius analysis</b><small>Highlight nodes outside the ring</small></span></label>
+        <label className="radius-slider"><span>Max Service Radius (km)</span><b>{params.radius} km</b><input className="range-control" type="range" min="3" max="15" value={params.radius} onChange={(event) => updateParams({ radius: Number(event.target.value) })} /><small>3 km</small><small>15 km</small></label>
       </section>
-
       <section className="rail-section">
         <div className="section-title"><span>05 / scenario</span><h2>Demand stress test</h2></div>
         <div className="scenario-switcher">{[0, 15, 30].map((value) => <button key={value} className={params.surge === value ? "active" : ""} onClick={() => updateParams({ surge: value })}>{value === 0 ? "Base" : `+${value}%`}</button>)}</div>
         <p className="helper-copy">Apply a peak-day profile without changing the geography.</p>
       </section>
-
+      <section className="rail-section export-section"><div className="section-title"><span>06 / handoff</span><h2>Exports</h2></div><button className="export-button" onClick={exportAssignments}><Download size={13} /> Download Assignments CSV</button><button className="export-button" onClick={exportCostSummary}><Download size={13} /> Download Cost Summary CSV</button><button className="export-button report" onClick={generateReport}><Printer size={13} /> Generate Decision Report</button></section>
       <div className="run-area"><button className="run-button" onClick={runModel}><span><Play size={14} fill="currentColor" /> Run optimization</span><ChevronRight size={18} /></button><p>Pure client-side model · no API required</p></div>
     </aside>
-
     <main id="top" className="workspace">
       <header className="topbar"><div className="crumb"><span className="desktop-only">GRIDPOINT</span><ChevronRight size={12} /><span>NETWORK DESIGN</span></div><div className="status"><i /> Permanent public app <span /> <time>{runStamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} model run</time></div></header>
-      <div className="hero">
-        <div><span className="eyebrow">WAREHOUSE NETWORK PLANNER <b>•</b> DECISION COCKPIT</span><h1>Find the lowest-friction<br />delivery network.</h1><p>Place hubs where demand is dense, keep the last mile short, and make every infrastructure trade-off visible before you commit.</p></div>
-        <div className="scenario-card"><div><Activity size={14} /><span>{params.surge ? `Peak demand +${params.surge}%` : "Baseline demand"}</span></div><b>{nodes.length} neighborhoods · {Math.round(result.totalOrders).toLocaleString()} orders/day</b></div>
-      </div>
-
+      <div className="hero"><div><span className="eyebrow">WAREHOUSE NETWORK PLANNER <b>•</b> DECISION COCKPIT</span><h1>Find the lowest-friction<br />delivery network.</h1><p>Place hubs where demand is dense, keep the last mile short, and make every infrastructure trade-off visible before you commit.</p></div><div className="scenario-card"><div><Activity size={14} /><span>{params.surge ? `Peak demand +${params.surge}%` : "Baseline demand"}</span></div><b>{nodes.length} {dataset} neighborhoods · {Math.round(result.totalOrders).toLocaleString()} orders/day</b></div></div>
       <section className="metrics-grid">
-        <div className="recommendation"><span>RECOMMENDATION</span><b>{result.hubs.length} hubs</b><p>cuts delivery friction</p></div>
-        <Metric label="Total cost" value={money(result.totalCost)} detail={`${money(result.deliveryCost)} delivery + ${money(result.infraCost)} infra`} tone="accent" />
-        <Metric label="vs. single hub" value={`${result.savingsPercent >= 0 ? "−" : "+"}${Math.abs(oneDecimal(result.savingsPercent))}%`} detail={`${money(Math.abs(result.savings))} modeled impact`} tone={result.savingsPercent >= 0 ? "good" : "warn"} />
-        <Metric label="Weighted avg. leg" value={`${oneDecimal(result.weightedDistance)} km`} detail={`${oneDecimal(result.totalDistance)} km total network`} />
-        <Metric label="Service level" value={`${oneDecimal(result.coverage)}%`} detail={`${Math.round(result.totalOrders).toLocaleString()} orders/day`} tone={result.coverage === 100 ? "good" : "warn"} />
+        <div className="recommendation"><span>RECOMMENDATION</span><b>{result.hubs.length} hubs</b><p>{manualHubs ? "manual sensitivity layout" : "optimizer-selected layout"}</p></div>
+        <Metric label="Total cost" value={money(result.totalCost)} detail={`${money(result.deliveryCost)} delivery + ${money(result.infraCost)} fixed`} tone="accent" tooltip="Sum of (distance × daily orders × cost per km) + fixed cost per hub" />
+        <Metric label="Modeled impact" value={`${result.savingsPercent >= 0 ? "−" : "+"}${Math.abs(oneDecimal(result.savingsPercent))}%`} detail={`${money(Math.abs(result.savings))} vs. one hub`} tone={result.savingsPercent >= 0 ? "good" : "warn"} tooltip="Percentage reduction in total cost compared to a single central hub" />
+        <Metric label="Weighted avg. leg" value={`${oneDecimal(result.weightedDistance)} km`} detail={`${oneDecimal(result.totalDistance)} km total network`} tooltip="Demand-weighted average distance from each neighborhood to its assigned hub" />
+        <Metric label="Service level" value={`${oneDecimal(result.coverage)}%`} detail={params.useRadius ? `${result.radiusViolations} violations @ ${params.radius} km` : "radius analysis off"} tone={result.coverage === 100 ? "good" : "warn"} tooltip="Percentage of demand nodes that fall within the maximum service radius" />
       </section>
-
-      {result.uncovered.length > 0 && <div className="model-alert"><TriangleAlert size={15} /><b>{result.uncovered.length} nodes are outside the max radius</b><span>{result.uncovered.map((node) => node.name).join(", ")}</span></div>}
+      {result.uncovered.length > 0 && <div className="model-alert"><TriangleAlert size={15} /><b>{result.uncovered.length} nodes are outside the {params.radius} km radius</b><span>{result.uncovered.map((node) => node.name).join(", ")}</span></div>}
       {result.hubs.some((hub) => hub.overCapacity) && <div className="model-alert capacity"><TriangleAlert size={15} /><b>Capacity limit exceeded</b><span>Increase the hub count or adjust the load limit.</span></div>}
-
-      <section className="map-card">
-        <div className="card-header"><div><span className="eyebrow">LIVE NETWORK MODEL</span><h2>Demand & proposed hubs</h2></div><div className="map-summary"><MapPin size={13} /> Bengaluru · planning coordinate view</div></div>
-        <MapPlot nodes={result.scenarioNodes} hubs={result.hubs} assignments={result.assignments} radius={params.useRadius ? params.radius : null} />
-      </section>
-
+      <section className="map-card"><div className="card-header"><div><span className="eyebrow">LIVE NETWORK MODEL</span><h2>Demand, assignments & proposed hubs</h2></div><div className="map-summary"><MapPin size={13} /> {dataset} · drag hubs to reassign</div></div><MapPlot nodes={result.scenarioNodes} hubs={result.hubs} assignments={result.assignments} radius={activeRadius} locationName={dataset} dragHubId={dragHubId} onHubDrag={moveHub} onHubDragEnd={finishRecalculation} isRecalculating={isRecalculating} /></section>
       <section className="results-card">
         <nav className="tab-bar">{([ ["overview", Sparkles, "Decision brief"], ["assignments", Table2, "Assignments"], ["hubs", CircleGauge, "Hub loads"], ["curve", BarChart3, "Cost curve"] ] as const).map(([id, Icon, label]) => <button key={id} className={activeTab === id ? "active" : ""} onClick={() => setActiveTab(id)}><Icon size={13} /> {label}</button>)}</nav>
         <div className="tab-content">
           {activeTab === "overview" && <div className="overview-grid">
-            <div className="brief-main"><span className="eyebrow">MODEL READOUT</span><h2>A practical network for the current demand profile.</h2><p>GridPoint weights busy neighborhoods more heavily than low-volume zones, then assigns each node to the nearest feasible hub. The result is a network plan that can be inspected—not just a single score.</p><div className="insight-callout"><Zap size={18} /><div><b>{result.savings >= 0 ? "Why this layout wins" : "Trade-off to review"}</b><p>{result.savings >= 0 ? `The proposed network saves ${money(result.savings)} per modeled day versus a single hub, while holding the weighted last-mile leg to ${oneDecimal(result.weightedDistance)} km.` : "At this hub count, fixed infrastructure cost is outweighing delivery savings. Check the cost curve for a leaner option."}</p></div></div></div>
+            <div className="brief-main"><span className="eyebrow">MODEL READOUT</span><h2>A practical network for the current demand profile.</h2><p>GridPoint weights busy neighborhoods more heavily than low-volume zones, then assigns each node to the nearest feasible hub. Drag a hub on the map to run an immediate sensitivity analysis on the live network.</p><div className="insight-callout"><Zap size={18} /><div><b>{result.savings >= 0 ? "Why this layout wins" : "Trade-off to review"}</b><p>{result.savings >= 0 ? `The proposed network saves ${money(result.savings)} per modeled day versus a single hub, while holding the weighted last-mile leg to ${oneDecimal(result.weightedDistance)} km.` : "At this hub count, fixed infrastructure cost is outweighing delivery savings. Check the cost curve for a leaner option."}</p></div></div></div>
             <div className="brief-score"><span>MODELED SAVING</span><b className={result.savings >= 0 ? "positive" : "negative"}>{result.savings >= 0 ? `${oneDecimal(result.savingsPercent)}%` : "—"}</b><p>against the<br />single-hub baseline</p></div>
-            <div className="brief-cards"><article><span>Daily demand modeled</span><b>{Math.round(result.totalOrders).toLocaleString()}</b><p>{nodes.length} Bengaluru neighborhoods</p></article><article><span>Recommended layout</span><b>{result.hubs.length} hubs</b><p>{oneDecimal(result.coverage)}% within guardrails</p></article><article><span>Weighted last mile</span><b>{oneDecimal(result.weightedDistance)} km</b><p>average leg, demand-weighted</p></article><article><span>Baseline comparison</span><b>{money(result.baselineCost)}</b><p>one hub vs {money(result.totalCost)}</p></article></div>
-            <div className="method-footnote"><Info size={14} /><span><b>Model notes.</b> Weighted {params.algorithm === "kmeans" ? "k-means" : "k-medoids"}, local coordinate distance, order volume as demand weight, and fixed cost per hub. This is a planning model—not a road-routing quote.</span></div>
+            <div className="brief-cards"><article><span>Daily demand modeled</span><b>{Math.round(result.totalOrders).toLocaleString()}</b><p>{nodes.length} {dataset} neighborhoods</p></article><article><span>Radius violations</span><b className={result.radiusViolations ? "warning-value" : ""}>{result.radiusViolations}</b><p>{params.useRadius ? `${params.radius} km service threshold` : "analysis disabled"}</p></article><article><span>Weighted last mile</span><b>{oneDecimal(result.weightedDistance)} km</b><p>average leg, demand-weighted</p></article><article><span>Single-hub baseline</span><b>{money(result.baselineCost)}</b><p>vs. {money(result.totalCost)} optimized</p></article></div>
+            <div className="cost-breakdown"><div><span>Cost breakdown</span><b>Total cost {money(result.totalCost)}</b></div><p><i className="delivery-dot" /> Delivery / variable <strong>{money(result.deliveryCost)}</strong></p><p><i className="infra-dot" /> Infrastructure / fixed <strong>{money(result.infraCost)}</strong></p><p className="cost-footnote">Fixed cost is modeled at {money(params.fixedCost)} per active hub per day.</p></div>
+            <div className="scenario-comparison"><div className="comparison-title"><span className="eyebrow">SCENARIO COMPARISON</span><b>Stress-test the same network</b></div><div className="comparison-scroll"><table><thead><tr><th>Scenario</th><th>Total cost</th><th>Hubs</th><th>Weighted avg. leg</th><th>Radius violations</th><th>Savings vs. single hub</th></tr></thead><tbody>{scenarioComparison.map((scenario) => <tr key={scenario.surge} className={scenario.surge === params.surge ? "current-scenario" : ""}><td>{scenario.surge ? `+${scenario.surge}%` : "Base"}</td><td>{money(scenario.totalCost)}</td><td>{scenario.hubs.length}</td><td>{oneDecimal(scenario.weightedDistance)} km</td><td>{scenario.radiusViolations}</td><td className={scenario.savingsPercent >= 0 ? "positive" : "negative"}>{oneDecimal(scenario.savingsPercent)}%</td></tr>)}</tbody></table></div></div>
+            <details className="assumptions"><summary><Info size={14} /> Model assumptions <ChevronRight size={14} /></summary><p>Hub locations use weighted k-means unless existing-node placement is selected. Distances are calculated on a local Euclidean planning grid. Daily demand is used as the assignment weight, and a fixed cost per hub is added to variable delivery cost.</p></details>
           </div>}
-
-          {activeTab === "assignments" && <div><div className="tab-heading"><div><span className="eyebrow">AUDIT TRAIL</span><h2>Where every node is served</h2></div><span>{result.assignments.length} assignments</span></div><div className="table-scroll"><table className="result-table"><thead><tr><th>Demand node</th><th>Orders/day</th><th>Hub</th><th>Leg</th><th>Vehicle</th><th>Delivery cost</th><th>Status</th></tr></thead><tbody>{result.assignments.map((assignment) => <tr key={assignment.id}><td><b>{assignment.name}</b></td><td>{assignment.adjustedOrders.toLocaleString()}</td><td><span className="hub-badge" style={{ background: PALETTE[assignment.hubId] }}>H{assignment.hubId + 1}</span></td><td>{oneDecimal(assignment.distance)} km</td><td>{assignment.vehicle}</td><td>{money(assignment.cost)}</td><td><span className={assignment.withinRadius ? "status-good" : "status-warn"}>{assignment.withinRadius ? <><Check size={12} /> In range</> : <><TriangleAlert size={12} /> Beyond range</>}</span></td></tr>)}</tbody></table></div></div>}
-
+          {activeTab === "assignments" && <div><div className="tab-heading"><div><span className="eyebrow">AUDIT TRAIL</span><h2>Where every node is served</h2></div><button className="small-export" onClick={exportAssignments}><Download size={12} /> Assignments CSV</button></div><div className="table-scroll"><table className="result-table"><thead><tr><th>Demand node</th><th>Orders/day</th><th>Hub</th><th>Leg</th><th>Vehicle</th><th>Delivery cost</th><th>Status</th></tr></thead><tbody>{result.assignments.map((assignment) => <tr key={assignment.id}><td><b>{assignment.name}</b></td><td>{assignment.adjustedOrders.toLocaleString()}</td><td><span className="hub-badge" style={{ background: PALETTE[assignment.hubId] }}>H{assignment.hubId + 1}</span></td><td>{oneDecimal(assignment.distance)} km</td><td>{assignment.vehicle}</td><td>{money(assignment.cost)}</td><td><span className={assignment.withinRadius ? "status-good" : "status-warn"}>{assignment.withinRadius ? <><Check size={12} /> In range</> : <><TriangleAlert size={12} /> Beyond range</>}</span></td></tr>)}</tbody></table></div></div>}
           {activeTab === "hubs" && <div><div className="tab-heading"><div><span className="eyebrow">CAPACITY PULSE</span><h2>Hub loads & utilization</h2></div><span>{result.hubs.length} active hubs</span></div><div className="hub-grid">{result.hubs.map((hub) => <article className="hub-panel" key={hub.hubId}><div className="hub-panel-top"><span className="large-hub-badge" style={{ background: PALETTE[hub.hubId] }}><Warehouse size={16} /> H{hub.hubId + 1}</span><div><b>{hub.nodeCount} nodes served</b><span>{hub.lat.toFixed(4)}, {hub.lon.toFixed(4)}</span></div></div><div className="hub-line"><span>Demand load</span><b>{Math.round(hub.load).toLocaleString()} orders</b></div>{hub.utilization !== null ? <><div className="utilization"><i style={{ width: `${Math.min(100, hub.utilization)}%`, background: hub.overCapacity ? "#c9575f" : PALETTE[hub.hubId] }} /></div><div className="hub-line muted"><span>Capacity utilization</span><b className={hub.overCapacity ? "over" : ""}>{oneDecimal(hub.utilization)}%</b></div></> : <p className="no-constraint">No capacity constraint applied</p>}</article>)}</div></div>}
-
           {activeTab === "curve" && <div><div className="tab-heading"><div><span className="eyebrow">SCENARIO ECONOMICS</span><h2>Find the cost-efficient hub count</h2><p>Delivery cost declines as hubs increase, while infrastructure cost rises. The lowest total cost is the point to take to a network decision.</p></div><div className="best-curve"><span>LOWEST TOTAL</span><b>{optimalCurve.k} hubs · {money(optimalCurve.total)}</b></div></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={curve}><defs><linearGradient id="totalFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#e87838" stopOpacity={.28} /><stop offset="100%" stopColor="#e87838" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#dce1da" strokeDasharray="3 3" /><XAxis dataKey="k" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#778179" }} label={{ value: "warehouses (k)", position: "insideBottom", offset: -2, style: { fill: "#778179", fontSize: 10 } }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#778179" }} tickFormatter={(value) => `₹${Math.round(value / 1000)}k`} /><Tooltip formatter={(value: number) => money(value)} contentStyle={{ borderRadius: 10, border: "1px solid #dce1da", boxShadow: "0 10px 30px rgba(29, 45, 35, .1)", fontSize: 12 }} /><Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} /><Area type="monotone" dataKey="total" name="Total cost" stroke="#e87838" strokeWidth={2.6} fill="url(#totalFill)" /><Line type="monotone" dataKey="delivery" name="Delivery cost" stroke="#4a8bf5" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="infrastructure" name="Infrastructure cost" stroke="#b487d9" strokeWidth={2} dot={false} /></AreaChart></ResponsiveContainer></div></div>}
         </div>
       </section>
-
       <footer className="site-footer"><span><Sparkles size={14} /> GridPoint is fully client-side and ready to share.</span><a href="#top">Back to top ↑</a></footer>
     </main>
   </div>;
