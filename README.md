@@ -24,7 +24,7 @@ Warehouse placement is an infrastructure decision with daily operational consequ
 
 ## Product highlights
 
-- **Demand-to-network modeling:** enter demand nodes manually, load Bengaluru/Mumbai/Delhi presets, or upload CSV data with `name`, `lat`, `lon`, and `orders` columns.
+- **Demand-to-network modeling:** enter demand nodes manually, load Bengaluru/Mumbai/Delhi presets, or upload CSV, TSV, TXT, JSON, or text-based PDF data with `name`, `lat`, `lon`, and `orders` columns. Common aliases such as `neighborhood`, `latitude`, `longitude`, and `daily_orders` are accepted.
 - **Weighted optimization:** choose weighted k-means or weighted k-medoids placement and select the warehouse count.
 - **Drag-and-recalculate sensitivity analysis:** move any proposed hub on the map and immediately recalculate assignments, total cost, weighted average leg, savings, and service exceptions.
 - **Color-coded assignment map:** demand nodes and delivery lines are colored by assigned hub, with optional route and catchment layers.

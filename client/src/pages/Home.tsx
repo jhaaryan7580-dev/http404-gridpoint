@@ -315,7 +315,8 @@ function normalizeCsvHeader(value: string) {
 
 function parseCsvMatrix(text: string) {
   const firstLine = text.split(/\r?\n/, 1)[0] || "";
-  const delimiter = firstLine.includes(";") && !firstLine.includes(",") ? ";" : ",";
+  const delimiters = [",", ";", "\t", "|"];
+  const delimiter = delimiters.reduce((best, candidate) => (firstLine.split(candidate).length > firstLine.split(best).length ? candidate : best), ",");
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -353,6 +354,71 @@ function parseDemandCsv(text: string): DemandNode[] {
     const numberValue = (column: number) => Number((values[column] || "").trim().replace(/,/g, ""));
     return { id: `upload-${Date.now()}-${index}`, name: (values[nameIndex] || "").trim(), lat: numberValue(latIndex), lon: numberValue(lonIndex), orders: numberValue(orderIndex) };
   }).filter((row) => row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders) && row.orders >= 0);
+}
+
+function parseDemandWhitespace(text: string): DemandNode[] {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const headers = lines.shift()?.split(/\s+/).map(normalizeCsvHeader) || [];
+  const findColumn = (aliases: string[]) => aliases.map((alias) => headers.indexOf(alias)).find((index) => index >= 0) ?? -1;
+  const nameIndex = findColumn(["name", "neighborhood", "neighbourhood", "node", "location"]);
+  const latIndex = findColumn(["lat", "latitude"]); const lonIndex = findColumn(["lon", "lng", "longitude"]); const orderIndex = findColumn(["orders", "daily_orders", "demand", "volume"]);
+  if ([nameIndex, latIndex, lonIndex, orderIndex].some((index) => index < 0)) return [];
+  return lines.map((line, index) => {
+    const values = line.split(/\s+/); const numberValue = (column: number) => Number((values[column] || "").replace(/,/g, ""));
+    const name = values.slice(nameIndex, latIndex).join(" ");
+    return { id: `upload-${Date.now()}-${index}`, name, lat: numberValue(latIndex), lon: numberValue(lonIndex), orders: numberValue(orderIndex) };
+  }).filter((row) => row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders) && row.orders >= 0);
+}
+
+function parseDemandJson(text: string): DemandNode[] {
+  try {
+    const payload = JSON.parse(text) as unknown;
+    const records = Array.isArray(payload) ? payload : payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data) ? (payload as { data: unknown[] }).data : [];
+    return records.map((record, index) => {
+      if (!record || typeof record !== "object") return null;
+      const values = Object.fromEntries(Object.entries(record).map(([key, value]) => [normalizeCsvHeader(key), value]));
+      const pick = (aliases: string[]) => aliases.map((alias) => values[alias]).find((value) => value !== undefined && value !== null);
+      const numberValue = (aliases: string[]) => Number(String(pick(aliases) ?? "").replace(/,/g, ""));
+      return { id: `upload-${Date.now()}-${index}`, name: String(pick(["name", "neighborhood", "neighbourhood", "node", "location", "demand_node"]) ?? "").trim(), lat: numberValue(["lat", "latitude"]), lon: numberValue(["lon", "lng", "longitude"]), orders: numberValue(["orders", "daily_orders", "orders_day", "demand", "volume"]) };
+    }).filter((row): row is DemandNode => Boolean(row && row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders) && row.orders >= 0));
+  } catch {
+    return [];
+  }
+}
+
+async function extractPdfText(buffer: ArrayBuffer) {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+  const document = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const pages: string[] = [];
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const lines = new Map<number, Array<{ x: number; text: string }>>();
+    for (const item of content.items as Array<{ str?: string; transform?: number[] }>) {
+      if (!item.str || !item.transform) continue;
+      const y = Math.round(item.transform[5]);
+      const line = lines.get(y) || [];
+      line.push({ x: item.transform[4], text: item.str });
+      lines.set(y, line);
+    }
+    const orderedLines = Array.from(lines.entries()).sort((a, b) => b[0] - a[0]);
+    pages.push(orderedLines.map(([, line]) => line.sort((a, b) => a.x - b.x).map((item) => item.text).join("\t")).join("\n"));
+  }
+  return pages.join("\n");
+}
+
+async function parseDemandFile(file: File) {
+  const extension = file.name.toLowerCase().split(".").pop() || "";
+  if (extension === "json" || file.type.includes("json")) return parseDemandJson(await file.text());
+  if (extension === "pdf" || file.type === "application/pdf") {
+    const text = await extractPdfText(await file.arrayBuffer());
+    const parsed = parseDemandCsv(text);
+    return parsed.length ? parsed : parseDemandWhitespace(text);
+  }
+  const text = await file.text();
+  const parsed = parseDemandCsv(text);
+  return parsed.length ? parsed : parseDemandWhitespace(text);
 }
 
 function downloadCsv(filename: string, headers: string[], rows: Array<Array<string | number>>) {
@@ -474,20 +540,17 @@ export default function Home() {
     setNodes(next); setDataset(name); setManualHubs(null); setParams((current) => ({ ...current, k: Math.min(3, next.length), surge: 0 })); setRunStamp(new Date());
   };
 
-  const uploadCsv = (event: ChangeEvent<HTMLInputElement>) => {
+  const uploadFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const parsed = parseDemandCsv(String(reader.result || ""));
+    void parseDemandFile(file).then((parsed) => {
       if (parsed.length < 2) {
-        toast.error("CSV needs at least two valid rows with name, lat, lon, and orders columns.");
+        toast.error("File needs at least two valid rows with name, lat, lon, and orders columns.");
         return;
       }
       setNodes(parsed); setDataset("Custom"); setManualHubs(null); setParams((current) => ({ ...current, k: Math.min(current.k, parsed.length) })); setRunStamp(new Date());
       toast.success(`Loaded ${parsed.length} demand nodes from ${file.name}`);
-    };
-    reader.onerror = () => toast.error("Could not read that CSV file. Please try again.");
-    reader.readAsText(file); event.target.value = "";
+    }).catch(() => toast.error("Could not read that file. Use a text-based table with name, lat, lon, and orders columns."));
+    event.target.value = "";
   };
 
   const exportAssignments = () => downloadCsv("gridpoint-assignments.csv", ["Neighborhood", "Lat", "Lon", "Orders", "Assigned Hub", "Distance to Hub"], result.assignments.map((assignment) => [assignment.name, assignment.lat, assignment.lon, assignment.adjustedOrders, `H${assignment.hubId + 1}`, oneDecimal(assignment.distance)]));
@@ -524,8 +587,8 @@ export default function Home() {
         <div className="section-title"><span>01 / demand map</span><h2>Demand nodes</h2></div>
         <div className="rail-stats"><div><b>{nodes.length}</b><span>nodes</span></div><div><b>{Math.round(nodes.reduce((sum, node) => sum + node.orders, 0)).toLocaleString()}</b><span>orders/day</span></div></div>
         <div className="preset-row" aria-label="Sample dataset presets">{(["Bengaluru", "Mumbai", "Delhi"] as const).map((name) => <button key={name} className={dataset === name ? "active" : ""} onClick={() => loadPreset(name)}>Load {name}</button>)}</div>
-        <input className="sr-only" ref={fileRef} type="file" accept=".csv" onChange={uploadCsv} />
-        <button className="upload-button" onClick={() => fileRef.current?.click()}><Upload size={14} /> Upload CSV <small>name · lat · lon · orders</small></button>
+        <input className="sr-only" ref={fileRef} type="file" accept=".csv,.tsv,.txt,.json,.pdf,text/csv,text/tab-separated-values,text/plain,application/json,application/pdf" onChange={uploadFile} />
+        <button className="upload-button" onClick={() => fileRef.current?.click()}><Upload size={14} /> Upload demand file <small>CSV · TSV · TXT · JSON · PDF</small></button>
         <div className="node-table-wrap"><table className="node-table"><thead><tr><th>node</th><th>lat</th><th>lon</th><th>orders</th><th /></tr></thead><tbody>{nodes.map((node) => <tr key={node.id}><td><input aria-label={`${node.name} name`} value={node.name} onChange={(event) => updateNode(node.id, { name: event.target.value })} /></td><td><input aria-label={`${node.name} latitude`} value={node.lat} onChange={(event) => updateNode(node.id, { lat: Number(event.target.value) || 0 })} /></td><td><input aria-label={`${node.name} longitude`} value={node.lon} onChange={(event) => updateNode(node.id, { lon: Number(event.target.value) || 0 })} /></td><td><input aria-label={`${node.name} orders`} value={node.orders} onChange={(event) => updateNode(node.id, { orders: Number(event.target.value) || 0 })} /></td><td><button className="remove-node" onClick={() => removeNode(node.id)} aria-label={`Remove ${node.name}`}><X size={12} /></button></td></tr>)}</tbody></table></div>
         <button className="add-node" onClick={addNode}><Plus size={13} /> Add demand node</button>
       </section>
