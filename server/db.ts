@@ -63,7 +63,7 @@ export async function getUserByOpenId(openId: string) {
 
 export async function listSavedScenarios(userId: number) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throw new Error("Scenario storage is temporarily unavailable");
   return db.select().from(savedScenarios).where(eq(savedScenarios.userId, userId)).orderBy(desc(savedScenarios.updatedAt));
 }
 
