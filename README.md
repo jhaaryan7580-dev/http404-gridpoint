@@ -1,5 +1,9 @@
 # HTTP 404 — GridPoint Network Design Lab
 
+[![HTTP 404 CI](https://github.com/jhaaryan7580-dev/http404-gridpoint/actions/workflows/ci.yml/badge.svg)](https://github.com/jhaaryan7580-dev/http404-gridpoint/actions/workflows/ci.yml)
+[![Live demo](https://img.shields.io/badge/live%20demo-open-1c9b70)](https://gridoptlab-ufj3xmps.manus.space)
+[![License](https://img.shields.io/badge/license-MIT-d95e1d.svg)](./LICENSE)
+
 > **Where should the warehouse go?**
 >
 > HTTP 404 is a warehouse network planning cockpit that turns neighborhood demand into an explainable, cost-aware delivery network. It helps a decision-maker place hubs, assign demand, stress-test peak demand, inspect service exceptions, and export a board-ready recommendation.
@@ -117,6 +121,10 @@ The repository currently includes regression coverage for OAuth logout and prote
 7. Finish by opening the workspace: signed-in users can save the winning scenario for later review.
 
 See [DEMO_SCRIPT.md](./DEMO_SCRIPT.md) for the spoken version.
+
+## Credits and acknowledgements
+
+See [CREDITS.md](./CREDITS.md) for the project credits, AI disclosure, platform attribution, open-source acknowledgements, and data provenance notes.
 
 ## AI and starter-template disclosure
 
