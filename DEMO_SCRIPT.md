@@ -4,6 +4,8 @@
 
 “Warehouse placement is a network decision, not just a map pin. High-demand neighborhoods should pull hubs closer, but every extra hub adds fixed infrastructure cost. HTTP 404 turns that trade-off into an explainable decision.”
 
+If asked about exact optimization, say: “This release uses a deterministic weighted clustering heuristic so interactive drag sensitivity and scenario comparisons stay immediate. An exact capacitated MILP is a planned backend evolution once the candidate-hub policy and asynchronous solver contract are fixed.”
+
 ## 0:20–0:45 — Start with demand
 
 “Here is the Bengaluru baseline. The editable table contains neighborhood coordinates and daily orders. We can load Mumbai or Delhi presets, or upload a CSV with `name`, `lat`, `lon`, and `orders`. The live network model immediately shows demand nodes, hub candidates, assignments, and the current service-radius ring.”

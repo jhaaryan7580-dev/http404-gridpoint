@@ -48,6 +48,10 @@ Demand is used as the weight during centroid updates, so high-order neighborhood
 
 The model is intentionally explainable: every assignment, distance, cost, exception, and scenario comparison is visible in the UI.
 
+### Implementation scope
+
+The current hackathon release intentionally uses a deterministic, demand-weighted clustering heuristic in the client so hub dragging, peak-demand scenarios, and cost-curve comparisons recalculate immediately without a network round trip. This is an interaction and reliability trade-off, not a claim of global optimality. An exact capacitated facility-location MILP with a discrete candidate-hub set is a documented next backend evolution; it would require an asynchronous solver contract and an explicit candidate-set policy, so it is not introduced into the stable submission at the last minute.
+
 ## Challenge requirement mapping
 
 | Hackathon requirement | HTTP 404 implementation |
