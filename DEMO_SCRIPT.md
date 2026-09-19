@@ -4,7 +4,7 @@
 
 “Warehouse placement is a network decision, not just a map pin. High-demand neighborhoods should pull hubs closer, but every extra hub adds fixed infrastructure cost. HTTP 404 turns that trade-off into an explainable decision.”
 
-If asked about exact optimization, say: “This release uses a deterministic weighted clustering heuristic so interactive drag sensitivity and scenario comparisons stay immediate. An exact capacitated MILP is a planned backend evolution once the candidate-hub policy and asynchronous solver contract are fixed.”
+If asked about exact optimization, say: “This release uses a deterministic weighted clustering heuristic so interactive drag sensitivity and scenario comparisons stay immediate. An exact capacitated facility-location MILP would use binary open and assignment variables over a discrete candidate-site set, with capacity and radius enforced inside the solve. That guarantees optimality for the candidate set, but requires a server round trip; it is the natural next backend mode once the candidate-site policy and asynchronous contract are fixed.”
 
 ## 0:20–0:45 — Start with demand
 

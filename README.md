@@ -44,13 +44,13 @@ Delivery cost = Σ distance(x_i, h(i)) × d_i × cost_per_km
 Total cost = Delivery cost + fixed_cost_per_hub × number_of_hubs
 ```
 
-Demand is used as the weight during centroid updates, so high-order neighborhoods pull candidate hubs more strongly. Distances are calculated on a local Euclidean planning grid using latitude/longitude conversion. Capacity and radius guardrails are evaluated after assignment, and infeasible capacity assignments are surfaced rather than silently hidden.
+Demand is used as the weight during centroid updates, so high-order neighborhoods pull candidate hubs more strongly. Distances are calculated on a local Euclidean planning grid using latitude/longitude conversion. Capacity and service-radius settings are exposed as operational guardrails and exceptions in the decision view; the current release does not claim that the heuristic is globally optimal under those constraints.
 
 The model is intentionally explainable: every assignment, distance, cost, exception, and scenario comparison is visible in the UI.
 
 ### Implementation scope
 
-The current hackathon release intentionally uses a deterministic, demand-weighted clustering heuristic in the client so hub dragging, peak-demand scenarios, and cost-curve comparisons recalculate immediately without a network round trip. This is an interaction and reliability trade-off, not a claim of global optimality. An exact capacitated facility-location MILP with a discrete candidate-hub set is a documented next backend evolution; it would require an asynchronous solver contract and an explicit candidate-set policy, so it is not introduced into the stable submission at the last minute.
+The current hackathon release intentionally uses a deterministic, demand-weighted clustering heuristic in the client so hub dragging, peak-demand scenarios, and cost-curve comparisons recalculate immediately without a network round trip. This is an interaction and reliability trade-off, not a claim of global optimality. An exact capacitated facility-location MILP—binary open/assign variables over a discrete candidate-site set, solved by a backend solver such as OR-Tools or `javascript-lp-solver`—would guarantee global optimality for that candidate set, but would require an asynchronous solver contract and an explicit candidate-set policy. Formulating that server-side mode is the natural next iteration; it is deliberately not introduced into the stable submission at the last minute.
 
 ## Challenge requirement mapping
 
