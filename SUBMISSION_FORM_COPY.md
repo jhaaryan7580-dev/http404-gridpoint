@@ -42,4 +42,6 @@ https://github.com/jhaaryan7580-dev/http404-gridpoint
 
 ## Demo video
 
-To be added by the team after recording the 2–3 minute walkthrough using `DEMO_SCRIPT.md`.
+https://github.com/jhaaryan7580-dev/http404-gridpoint/releases/tag/demo-video-v1.0
+
+The release contains the official `HTTP404-GridPoint-demo.mov` video asset. It is published as a GitHub Release asset because the video is larger than GitHub's 100 MB regular repository-file limit.
