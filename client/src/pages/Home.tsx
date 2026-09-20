@@ -478,6 +478,7 @@ export default function Home() {
   const [params, setParams] = useState<Params>(DEFAULT_PARAMS);
   const [dataset, setDataset] = useState<DatasetKey>("Bengaluru");
   const [manualHubs, setManualHubs] = useState<Point[] | null>(null);
+  const [optimizationRun, setOptimizationRun] = useState(0);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [runStamp, setRunStamp] = useState(() => new Date());
   const [dragHubId, setDragHubId] = useState<number | null>(null);
@@ -495,9 +496,9 @@ export default function Home() {
   const scenarioQuery = trpc.scenario.list.useQuery(undefined, { enabled: isAuthenticated, retry: false, refetchOnWindowFocus: false });
   const saveScenarioMutation = trpc.scenario.save.useMutation({ onSuccess: () => { utils.scenario.list.invalidate(); toast.success("Scenario saved to your cloud workspace"); setScenarioName(""); }, onError: () => toast.error("Unable to save this scenario. Please try again.") });
   const deleteScenarioMutation = trpc.scenario.delete.useMutation({ onSuccess: () => { utils.scenario.list.invalidate(); toast.success("Scenario removed"); }, onError: () => toast.error("Unable to remove this scenario. Please try again.") });
-  const result = useMemo(() => solveNetwork(nodes, params, manualHubs), [nodes, params, manualHubs]);
-  const curve = useMemo(() => buildCurve(nodes, params), [nodes, params]);
-  const scenarioComparison = useMemo(() => [0, 15, 30].map((surge) => ({ surge, ...solveNetwork(nodes, { ...params, surge }, manualHubs) })), [nodes, params, manualHubs]);
+  const result = useMemo(() => solveNetwork(nodes, params, manualHubs), [nodes, params, manualHubs, optimizationRun]);
+  const curve = useMemo(() => buildCurve(nodes, params), [nodes, params, optimizationRun]);
+  const scenarioComparison = useMemo(() => [0, 15, 30].map((surge) => ({ surge, ...solveNetwork(nodes, { ...params, surge }, manualHubs) })), [nodes, params, manualHubs, optimizationRun]);
   const optimalCurve = curve.reduce((best, point) => point.total < best.total ? point : best, curve[0]);
   const activeRadius = params.useRadius ? params.radius : null;
   const highestCostNode = useMemo(() => [...result.assignments].sort((a, b) => b.cost - a.cost)[0], [result.assignments]);
@@ -522,7 +523,14 @@ export default function Home() {
   const updateNode = (id: string, patch: Partial<DemandNode>) => { setDataset("Custom"); setManualHubs(null); setNodes((current) => current.map((node) => node.id === id ? { ...node, ...patch } : node)); };
   const addNode = () => { setDataset("Custom"); setManualHubs(null); setNodes((current) => [...current, { id: `node-${Date.now()}`, name: `New node ${current.length + 1}`, lat: 12.97, lon: 77.61, orders: 100 }]); };
   const removeNode = (id: string) => { setDataset("Custom"); setManualHubs(null); setNodes((current) => current.length > 2 ? current.filter((node) => node.id !== id) : current); };
-  const runModel = () => { setManualHubs(null); setRunStamp(new Date()); };
+  const runModel = () => {
+    setManualHubs(null);
+    setOptimizationRun((current) => current + 1);
+    setIsRecalculating(true);
+    setRunStamp(new Date());
+    if (recalculationTimer.current) window.clearTimeout(recalculationTimer.current);
+    recalculationTimer.current = window.setTimeout(() => setIsRecalculating(false), 420);
+  };
   const finishRecalculation = () => { setDragHubId(null); window.setTimeout(() => setIsRecalculating(false), 180); };
   const moveHub = (hubId: number, point: Point) => {
     setDragHubId(hubId); setIsRecalculating(true);
@@ -630,7 +638,7 @@ export default function Home() {
       </section>
       <section className="rail-section workspace-rail"><div className="section-title"><span>06 / workspace</span><h2>Cloud decisions</h2></div><p className="helper-copy">{isAuthenticated ? `Signed in as ${user?.name || "your team account"}` : "Sign in to preserve scenarios across devices."}</p><button className="workspace-button" onClick={() => isAuthenticated ? setWorkspaceOpen(true) : startLogin()}>{isAuthenticated ? <><Cloud size={13} /> Open scenario library</> : <><LogIn size={13} /> Sign in to save work</>}</button><div className="layer-toggle-row"><span><Layers3 size={12} /> Map layers</span><button className={showRoutes ? "active" : ""} onClick={() => setShowRoutes((current) => !current)}>Routes</button><button className={showZones ? "active" : ""} onClick={() => setShowZones((current) => !current)}>Zones</button></div></section>
       <section className="rail-section export-section"><div className="section-title"><span>07 / handoff</span><h2>Exports</h2></div><button className="export-button" onClick={exportAssignments}><Download size={13} /> Download Assignments CSV</button><button className="export-button" onClick={exportCostSummary}><Download size={13} /> Download Cost Summary CSV</button><button className="export-button report" onClick={generateReport}><Printer size={13} /> Generate Decision Report</button></section>
-      <div className="run-area"><button className="run-button" onClick={runModel}><span><Play size={14} fill="currentColor" /> Run optimization</span><ChevronRight size={18} /></button><button className="tour-link" onClick={() => setIsTourOpen(true)}><Sparkles size={12} /> 90-second decision playbook</button></div>
+      <div className="run-area"><button className="run-button" onClick={runModel} disabled={isRecalculating}><span>{isRecalculating ? <><Activity size={14} /> Recalculating…</> : <><Play size={14} fill="currentColor" /> Run optimization</>}</span><ChevronRight size={18} /></button><button className="tour-link" onClick={() => setIsTourOpen(true)}><Sparkles size={12} /> 90-second decision playbook</button></div>
     </aside>
     <main id="top" className="workspace">
       <header className="topbar"><div className="crumb"><span className="desktop-only">HTTP 404</span><ChevronRight size={12} /><span>NETWORK DESIGN</span></div><div className="topbar-tools"><button className="command-button" onClick={() => setCommandOpen(true)}><Search size={13} /><span>Search actions</span><kbd>⌘ K</kbd></button><button className="icon-button" aria-label="Toggle dark or light mode" onClick={toggleTheme}>{theme === "light" ? <Moon size={14} /> : <Sun size={14} />}</button><button className="account-button" onClick={() => isAuthenticated ? setWorkspaceOpen(true) : startLogin()}>{authLoading ? "Checking account…" : isAuthenticated ? <><span className="account-initial">{user?.name?.slice(0, 1).toUpperCase() || "U"}</span>{user?.name || "Workspace"}</> : <><LogIn size={13} /> Sign in</>}</button><div className="status"><i /><span className="status-label desktop-only">Live model</span><span className="status-separator" aria-hidden="true" /><time>{runStamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div></div></header>
