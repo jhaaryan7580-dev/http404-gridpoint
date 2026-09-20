@@ -59,7 +59,7 @@ type Algorithm = "kmeans" | "kmedoids";
 type Tab = "overview" | "assignments" | "hubs" | "curve";
 type DatasetKey = "Bengaluru" | "Mumbai" | "Delhi" | "Custom";
 
-type DemandNode = {
+export type DemandNode = {
   id: string;
   name: string;
   lat: number;
@@ -67,7 +67,7 @@ type DemandNode = {
   orders: number;
 };
 
-type Params = {
+export type Params = {
   k: number;
   algorithm: Algorithm;
   costPerKm: number;
@@ -80,7 +80,7 @@ type Params = {
   surge: number;
 };
 
-type Point = { lat: number; lon: number };
+export type Point = { lat: number; lon: number };
 type ScenarioNode = DemandNode & { adjustedOrders: number };
 type Assignment = ScenarioNode & {
   hubId: number;
@@ -97,7 +97,7 @@ type Hub = Point & {
   overCapacity: boolean;
 };
 
-type NetworkResult = {
+export type NetworkResult = {
   scenarioNodes: ScenarioNode[];
   hubs: Hub[];
   assignments: Assignment[];
@@ -174,7 +174,7 @@ const DELHI: DemandNode[] = [
 
 const DATASETS: Record<Exclude<DatasetKey, "Custom">, DemandNode[]> = { Bengaluru: BENGALURU, Mumbai: MUMBAI, Delhi: DELHI };
 
-const DEFAULT_PARAMS: Params = {
+export const DEFAULT_PARAMS: Params = {
   k: 3,
   algorithm: "kmeans",
   costPerKm: 2,
@@ -191,7 +191,7 @@ const money = (value: number) => `₹${Math.round(value).toLocaleString("en-IN")
 const oneDecimal = (value: number) => Number(value.toFixed(1));
 const cloneNodes = (nodes: DemandNode[]) => nodes.map((node) => ({ ...node }));
 
-function distanceKm(a: Point, b: Point) {
+export function distanceKm(a: Point, b: Point) {
   const latKm = (a.lat - b.lat) * EARTH_KM_PER_LAT;
   const lonKm = (a.lon - b.lon) * EARTH_KM_PER_LAT * Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180));
   return Math.sqrt(latKm * latKm + lonKm * lonKm);
@@ -205,7 +205,7 @@ function weightedCentroid(nodes: Array<DemandNode & { adjustedOrders?: number }>
   };
 }
 
-function buildCenters(nodes: ScenarioNode[], k: number, algorithm: Algorithm) {
+export function buildCenters(nodes: ScenarioNode[], k: number, algorithm: Algorithm) {
   const count = Math.max(1, Math.min(k, nodes.length));
   const ranked = [...nodes].sort((a, b) => b.adjustedOrders - a.adjustedOrders);
   const centers: Point[] = [{ lat: ranked[0].lat, lon: ranked[0].lon }];
@@ -229,7 +229,8 @@ function buildCenters(nodes: ScenarioNode[], k: number, algorithm: Algorithm) {
       if (clusters[idx].length) {
         Object.assign(center, weightedCentroid(clusters[idx]));
       } else {
-        const farthest = nodes.reduce((best, node) => distanceKm(node, center) > distanceKm(best, center) ? node : best, nodes[0]);
+        const available = nodes.filter((node) => !centers.some((other, otherIndex) => otherIndex !== idx && other.lat === node.lat && other.lon === node.lon));
+        const farthest = (available.length ? available : nodes).reduce((best, node) => distanceKm(node, center) > distanceKm(best, center) ? node : best, (available.length ? available : nodes)[0]);
         Object.assign(center, { lat: farthest.lat, lon: farthest.lon });
       }
     });
@@ -246,7 +247,7 @@ function buildCenters(nodes: ScenarioNode[], k: number, algorithm: Algorithm) {
   return centers;
 }
 
-function solveNetwork(nodes: DemandNode[], params: Params, centerOverride: Point[] | null = null): NetworkResult {
+export function solveNetwork(nodes: DemandNode[], params: Params, centerOverride: Point[] | null = null): NetworkResult {
   const scenarioNodes = nodes.map((node) => ({ ...node, adjustedOrders: Math.round(node.orders * (1 + params.surge / 100)) }));
   const useOverride = centerOverride && centerOverride.length === Math.min(params.k, nodes.length);
   const centers = useOverride ? centerOverride!.map((center) => ({ ...center })) : buildCenters(scenarioNodes, params.k, params.algorithm);
@@ -309,6 +310,16 @@ function Metric({ label, value, detail, tone = "", tooltip }: { label: string; v
   return <div className={`metric ${tone}`}><span>{label}{tooltip && <i className="metric-info" tabIndex={0} aria-label={tooltip}><Info size={11} /><em>{tooltip}</em></i>}</span><strong>{value}</strong><small>{detail}</small></div>;
 }
 
+function NumericCell({ value, ariaLabel, onCommit }: { value: number; ariaLabel: string; onCommit: (value: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  return <input aria-label={ariaLabel} inputMode="decimal" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => {
+    const parsed = Number(draft);
+    if (draft.trim() && Number.isFinite(parsed)) onCommit(parsed);
+    else setDraft(String(value));
+  }} />;
+}
+
 function csvEscape(value: string | number) {
   const text = String(value);
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -318,7 +329,7 @@ function normalizeCsvHeader(value: string) {
   return value.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
-function parseCsvMatrix(text: string) {
+export function parseCsvMatrix(text: string) {
   const firstLine = text.split(/\r?\n/, 1)[0] || "";
   const delimiters = [",", ";", "\t", "|"];
   const delimiter = delimiters.reduce((best, candidate) => (firstLine.split(candidate).length > firstLine.split(best).length ? candidate : best), ",");
@@ -346,7 +357,7 @@ function parseCsvMatrix(text: string) {
   return rows;
 }
 
-function parseDemandCsv(text: string): DemandNode[] {
+export function parseDemandCsv(text: string): DemandNode[] {
   const rows = parseCsvMatrix(text);
   const headers = rows.shift()?.map(normalizeCsvHeader) || [];
   const findColumn = (aliases: string[]) => aliases.map((alias) => headers.indexOf(alias)).find((index) => index >= 0) ?? -1;
@@ -361,7 +372,7 @@ function parseDemandCsv(text: string): DemandNode[] {
   }).filter((row) => row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders) && row.orders >= 0);
 }
 
-function parseDemandWhitespace(text: string): DemandNode[] {
+export function parseDemandWhitespace(text: string): DemandNode[] {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const headers = lines.shift()?.split(/\s+/).map(normalizeCsvHeader) || [];
   const findColumn = (aliases: string[]) => aliases.map((alias) => headers.indexOf(alias)).find((index) => index >= 0) ?? -1;
@@ -375,7 +386,7 @@ function parseDemandWhitespace(text: string): DemandNode[] {
   }).filter((row) => row.name && Number.isFinite(row.lat) && Number.isFinite(row.lon) && Number.isFinite(row.orders) && row.orders >= 0);
 }
 
-function parseDemandJson(text: string): DemandNode[] {
+export function parseDemandJson(text: string): DemandNode[] {
   try {
     const payload = JSON.parse(text) as unknown;
     const records = Array.isArray(payload) ? payload : payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data) ? (payload as { data: unknown[] }).data : [];
@@ -614,7 +625,7 @@ export default function Home() {
         <div className="preset-row" aria-label="Sample dataset presets">{(["Bengaluru", "Mumbai", "Delhi"] as const).map((name) => <button key={name} className={dataset === name ? "active" : ""} onClick={() => loadPreset(name)}>Load {name}</button>)}</div>
         <input className="sr-only" ref={fileRef} type="file" accept=".csv,.tsv,.txt,.json,.pdf,text/csv,text/tab-separated-values,text/plain,application/json,application/pdf" onChange={uploadFile} />
         <button className="upload-button" onClick={() => fileRef.current?.click()}><Upload size={14} /> Upload demand file <small>CSV · TSV · TXT · JSON · PDF</small></button>
-        <div className="node-table-wrap"><table className="node-table"><thead><tr><th>node</th><th>lat</th><th>lon</th><th>orders</th><th /></tr></thead><tbody>{nodes.map((node) => <tr key={node.id}><td><input aria-label={`${node.name} name`} value={node.name} onChange={(event) => updateNode(node.id, { name: event.target.value })} /></td><td><input aria-label={`${node.name} latitude`} value={node.lat} onChange={(event) => updateNode(node.id, { lat: Number(event.target.value) || 0 })} /></td><td><input aria-label={`${node.name} longitude`} value={node.lon} onChange={(event) => updateNode(node.id, { lon: Number(event.target.value) || 0 })} /></td><td><input aria-label={`${node.name} orders`} value={node.orders} onChange={(event) => updateNode(node.id, { orders: Number(event.target.value) || 0 })} /></td><td><button className="remove-node" onClick={() => removeNode(node.id)} aria-label={`Remove ${node.name}`}><X size={12} /></button></td></tr>)}</tbody></table></div>
+        <div className="node-table-wrap"><table className="node-table"><thead><tr><th>node</th><th>lat</th><th>lon</th><th>orders</th><th /></tr></thead><tbody>{nodes.map((node) => <tr key={node.id}><td><input aria-label={`${node.name} name`} value={node.name} onChange={(event) => updateNode(node.id, { name: event.target.value })} /></td><td><NumericCell ariaLabel={`${node.name} latitude`} value={node.lat} onCommit={(value) => updateNode(node.id, { lat: value })} /></td><td><NumericCell ariaLabel={`${node.name} longitude`} value={node.lon} onCommit={(value) => updateNode(node.id, { lon: value })} /></td><td><NumericCell ariaLabel={`${node.name} orders`} value={node.orders} onCommit={(value) => updateNode(node.id, { orders: value })} /></td><td><button className="remove-node" onClick={() => removeNode(node.id)} aria-label={`Remove ${node.name}`}><X size={12} /></button></td></tr>)}</tbody></table></div>
         <button className="add-node" onClick={addNode}><Plus size={13} /> Add demand node</button>
       </section>
       <section className="rail-section">

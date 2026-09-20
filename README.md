@@ -77,7 +77,7 @@ The current hackathon release intentionally uses a deterministic, demand-weighte
 - Express + tRPC for the managed fullstack API
 - Manus OAuth for authentication
 - Drizzle ORM + MySQL/TiDB for private saved scenarios
-- Vitest for server regression tests
+- Vitest for server and client model regression tests
 - GitHub Actions for check, test, build, and lint
 
 ## Run locally
@@ -112,7 +112,7 @@ npx --yes oxlint@1.83.0 client/src --deny-warnings
 pnpm build
 ```
 
-The repository includes regression coverage for OAuth logout and protected scenario listing, saving, validation, deletion, and unauthenticated access. The client model also includes defensive handling for single-axis datasets, empty clusters, and auditable assignment exports.
+The repository includes regression coverage for OAuth logout, protected scenario listing/saving/validation/deletion, and the client model’s cost identity, determinism, capacity overflow, radius exceptions, surge rounding, distinct centers, and CSV/JSON/whitespace parsing. The client model also includes defensive handling for single-axis datasets, empty clusters, and auditable assignment exports.
 
 ## Two-minute demo flow
 
