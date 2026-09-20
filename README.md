@@ -25,7 +25,7 @@ Warehouse placement is an infrastructure decision with daily operational consequ
 ## Product highlights
 
 - **Demand-to-network modeling:** enter demand nodes manually, load Bengaluru/Mumbai/Delhi presets, or upload CSV, TSV, TXT, JSON, or text-based PDF data with `name`, `lat`, `lon`, and `orders` columns. Common aliases such as `neighborhood`, `latitude`, `longitude`, and `daily_orders` are accepted.
-- **Weighted optimization:** choose weighted k-means or weighted k-medoids placement and select the warehouse count.
+- **Weighted optimization:** choose weighted k-means or deterministic existing-site placement and select the warehouse count.
 - **Drag-and-recalculate sensitivity analysis:** move any proposed hub on the map and immediately recalculate assignments, total cost, weighted average leg, savings, and service exceptions.
 - **Color-coded assignment map:** demand nodes and delivery lines are colored by assigned hub, with optional route and catchment layers.
 - **Operational guardrails:** model warehouse capacity, a 3–15 km service radius, vehicle mix, and +15%/+30% demand stress scenarios.
@@ -59,7 +59,7 @@ The current hackathon release intentionally uses a deterministic, demand-weighte
 | Enter/upload neighborhood data | Editable demand table, Bengaluru/Mumbai/Delhi presets, CSV upload |
 | Visualize neighborhood locations | Interactive planning map with demand nodes and proposed hubs |
 | Select warehouse count | Warehouse-count slider scaled to loaded demand nodes |
-| Optimize locations | Demand-weighted k-means or weighted k-medoids |
+| Optimize locations | Demand-weighted k-means or deterministic existing-site placement |
 | Assign each neighborhood | Nearest feasible hub assignment with colored routes |
 | Calculate distance and cost | Total distance, weighted average leg, delivery cost, fixed cost, total cost |
 | Compare arrangements | Single-hub baseline, scenario comparison, cost curve, drag sensitivity |
@@ -112,7 +112,7 @@ npx --yes oxlint@1.83.0 client/src --deny-warnings
 pnpm build
 ```
 
-The repository currently includes regression coverage for OAuth logout and protected scenario listing, saving, validation, deletion, and unauthenticated access.
+The repository includes regression coverage for OAuth logout and protected scenario listing, saving, validation, deletion, and unauthenticated access. The client model also includes defensive handling for single-axis datasets, empty clusters, and auditable assignment exports.
 
 ## Two-minute demo flow
 
