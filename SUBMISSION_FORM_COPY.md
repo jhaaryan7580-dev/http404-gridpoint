@@ -18,7 +18,7 @@ Companies need to place one or more warehouses across a city while minimizing de
 
 ## Solution
 
-HTTP 404 provides an interactive decision cockpit for entering, uploading, or loading neighborhood demand. It uses weighted k-means or weighted k-medoids to propose hub locations, assigns every neighborhood to a hub, and reports delivery cost, fixed infrastructure cost, weighted average leg, savings versus a single hub, service level, radius exceptions, and hub utilization. Judges can drag hubs to run immediate sensitivity analysis, compare +15% and +30% demand scenarios, inspect assignments, and export the recommendation.
+HTTP 404 provides an interactive decision cockpit for entering, uploading, or loading neighborhood demand. It uses weighted k-means or deterministic existing-site placement to propose hub locations, assigns every neighborhood to a hub, and reports delivery cost, fixed infrastructure cost, weighted average leg, savings versus a single hub, service level, radius exceptions, and hub utilization. Judges can drag hubs to run immediate sensitivity analysis, compare +15% and +30% demand scenarios, inspect assignments, and export the recommendation.
 
 ## Innovation
 
@@ -26,7 +26,7 @@ The differentiator is the combination of explainable optimization and decision-q
 
 ## Technical implementation
 
-React 19 and TypeScript power the dashboard. The client contains a deterministic weighted facility-location model and SVG planning map. The managed fullstack layer adds Express, tRPC, Manus OAuth, Drizzle ORM, MySQL/TiDB, and owner-scoped scenario persistence. Vitest covers authentication and saved-scenario authorization/validation paths.
+React 19 and TypeScript power the dashboard. The client contains a deterministic weighted facility-location model and SVG planning map. The managed fullstack layer adds Express, tRPC, Manus OAuth, Drizzle ORM, MySQL/TiDB, and owner-scoped scenario persistence. Vitest covers authentication, saved-scenario authorization/validation paths, and the client model’s cost, determinism, guardrail, surge, and parser behavior.
 
 ## AI disclosure
 
