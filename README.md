@@ -10,6 +10,12 @@
 
 [Open the live website](https://gridoptlab-ufj3xmps.manus.space)
 
+## Demo video
+
+Watch the official HTTP 404 / GridPoint walkthrough in the [GitHub Release video asset](https://github.com/jhaaryan7580-dev/http404-gridpoint/releases/tag/demo-video-v1.0). The release includes the complete screen-recorded product demonstration; the video is published as a release asset because GitHub regular repository files are limited to 100 MB.
+
+For the exact recording flow and narration, see the [linear demo recording guide](./VIDEO_RECORDING_GUIDE.md). For hackathon form text, see [SUBMISSION_FORM_COPY.md](./SUBMISSION_FORM_COPY.md).
+
 ## The challenge
 
 GridPoint addresses the **GRIDPOINT** warehouse-location challenge from Hack-a-Matics. Given neighborhood coordinates and daily orders, the system determines suitable warehouse locations and assignments while minimizing demand-weighted delivery cost. High-order neighborhoods contribute more heavily to the objective than low-volume neighborhoods.
